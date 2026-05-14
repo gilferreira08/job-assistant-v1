@@ -9,9 +9,17 @@ from scoring import (
     priority,
     compute_board_scores,
     exclusion_detected,
+    exclusion_reason,
     auto_technical_suggestion,
 )
-from storage import init_db, load_jobs, save_job, exists_duplicate
+from storage import (
+    init_db,
+    load_jobs,
+    save_job,
+    exists_duplicate,
+    find_duplicate_id,
+    delete_job_by_id,
+)
 
 st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
 st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
@@ -78,6 +86,7 @@ if run_analysis:
 
     f_score = final_score(blended_tech_score, board_avg)
     auto_excluded = exclusion_detected(position, job_description)
+    auto_excl_reason = exclusion_reason(position, job_description)
 
     st.session_state.analysis_result = {
         "company": company,
@@ -102,6 +111,7 @@ if run_analysis:
         "board_avg": round(float(board_avg), 2),
         "final_score": round(f_score, 2),
         "auto_excluded": auto_excluded,
+        "auto_exclusion_reason": auto_excl_reason,
     }
 
 result = st.session_state.analysis_result
@@ -144,7 +154,8 @@ if result is not None:
         )
 
     if result.get("auto_excluded", False):
-        st.warning("Auto exclusion detected from role/title keywords. Review before saving.")
+        reason_txt = result.get("auto_exclusion_reason", "automatic exclusion keyword match")
+        st.warning(f"Auto exclusion detected. Reason: {reason_txt}")
 
     st.markdown("### Board Details")
     board_data = result.get("board_scores", {})
@@ -166,20 +177,36 @@ if result is not None:
     verified_active = st.checkbox("Role verified active", value=True)
     excluded_manual = st.checkbox("Out of scope / excluded (manual override)", value=False)
 
+    # Duplicate flow
+    is_dup = exists_duplicate(result["company"], result["position"], result["country"])
+    duplicate_action = "Discard new"
+
+    if is_dup:
+        st.warning("Duplicate detected for same Company + Position + Country.")
+        duplicate_action = st.selectbox(
+            "Duplicate handling",
+            ["Discard new", "Add anyway", "Replace existing"],
+            index=0
+        )
+
     if st.button("Save Job"):
-        if exists_duplicate(result["company"], result["position"], result["country"]):
-            st.warning("Duplicate detected: same Company + Position + Country already exists.")
+        existing_id = find_duplicate_id(result["company"], result["position"], result["country"])
+
+        if existing_id and duplicate_action == "Discard new":
+            st.info("New record discarded (duplicate policy).")
             st.stop()
+
+        if existing_id and duplicate_action == "Replace existing":
+            delete_job_by_id(existing_id)
 
         excluded = excluded_manual or result.get("auto_excluded", False)
 
-        # Exclusion reason tracking
         if excluded_manual and result.get("auto_excluded", False):
-            excluded_reason = "manual override + automatic exclusion keyword match"
+            excluded_reason = "manual override + " + (result.get("auto_exclusion_reason") or "automatic exclusion keyword match")
         elif excluded_manual:
             excluded_reason = "manual override"
         elif result.get("auto_excluded", False):
-            excluded_reason = "automatic exclusion keyword match"
+            excluded_reason = result.get("auto_exclusion_reason") or "automatic exclusion keyword match"
         else:
             excluded_reason = ""
 
