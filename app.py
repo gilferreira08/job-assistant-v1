@@ -3,13 +3,16 @@ import pandas as pd
 
 from scoring import weighted_technical_score, final_score, recommendation, priority
 from knowledge import TARGET_GEOS, BOARD_MEMBERS
+from storage import init_db, load_jobs, save_job, exists_duplicate
 
 st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
 st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
 st.caption("Board scoring logic: 95% based on Job Description, 5% based on Position Title.")
 
+# --- DB init + load persisted jobs ---
+init_db()
 if "jobs" not in st.session_state:
-    st.session_state.jobs = []
+    st.session_state.jobs = load_jobs()
 
 st.subheader("Add Job")
 
@@ -94,13 +97,8 @@ if submitted:
         st.error("Please paste a meaningful job description (at least ~80 characters).")
         st.stop()
 
-    # Duplicate check (company + position + country)
-    duplicate = any(
-        j["Company"].strip().lower() == company.strip().lower()
-        and j["Position"].strip().lower() == position.strip().lower()
-        and j["Country"] == country
-        for j in st.session_state.jobs
-    )
+    # DB duplicate check (company + position + country)
+    duplicate = exists_duplicate(company, position, country)
     if duplicate:
         st.warning("Duplicate detected: same Company + Position + Country already exists.")
         st.stop()
@@ -118,6 +116,8 @@ if submitted:
         sum(v["weighted_score"] for v in board_scores.values()) / len(board_scores),
         2
     )
+
+    st.info(f"Board Overview Score (overall): **{board_avg} / 100**")
 
     f_score = final_score(tech_score, board_avg)
     rec = recommendation(f_score, verified_active=verified_active, excluded=excluded)
@@ -139,6 +139,7 @@ if submitted:
         "Location Fit": location_fit,
         "Weighted Technical Score": round(tech_score, 2),
         "Board Method": "95% Description / 5% Title",
+        "Board Overview Score": board_avg,
         "Board Avg": board_avg,
         "Final Score": round(f_score, 2),
         "Recommendation": rec,
@@ -150,8 +151,10 @@ if submitted:
         "Board Feedback": board_feedback,
     }
 
-    st.session_state.jobs.append(new_job)
-    st.success("Job saved successfully.")
+    # Save in SQLite and refresh session from DB
+    save_job(new_job)
+    st.session_state.jobs = load_jobs()
+    st.success("Job saved successfully and persisted in database.")
 
 st.divider()
 st.subheader("Dashboard Metrics")
@@ -162,13 +165,17 @@ apply_now = sum(1 for j in jobs if j["Recommendation"] == "Apply Now")
 consider_count = sum(1 for j in jobs if j["Recommendation"] == "Consider")
 skip_count = sum(1 for j in jobs if j["Recommendation"] == "Skip")
 avg_final_score = round(sum(j["Final Score"] for j in jobs) / total_jobs, 2) if total_jobs else 0.0
+avg_board_overview = round(
+    sum(j.get("Board Overview Score", j.get("Board Avg", 0)) for j in jobs) / total_jobs, 2
+) if total_jobs else 0.0
 
-m1, m2, m3, m4, m5 = st.columns(5)
+m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Total Jobs", total_jobs)
 m2.metric("Apply Now", apply_now)
 m3.metric("Consider", consider_count)
 m4.metric("Skip", skip_count)
 m5.metric("Avg Final Score", avg_final_score)
+m6.metric("Avg Board Overview", avg_board_overview)
 
 st.divider()
 st.subheader("Jobs Table")
@@ -178,10 +185,13 @@ if total_jobs == 0:
 else:
     df = pd.DataFrame(jobs)
 
-    # Keep table readable by hiding very large nested fields
+    # Ensure Board Overview column exists for older rows
+    if "Board Overview Score" not in df.columns:
+        df["Board Overview Score"] = df.get("Board Avg", 0)
+
     display_cols = [
         "Company", "Position", "Location", "Country", "Source",
-        "Weighted Technical Score", "Board Avg", "Final Score",
+        "Weighted Technical Score", "Board Overview Score", "Board Avg", "Final Score",
         "Recommendation", "Priority", "Status", "Verified Active", "Excluded"
     ]
     display_df = df[display_cols].copy()
@@ -190,17 +200,17 @@ else:
     with f1:
         rec_filter = st.selectbox(
             "Filter by Recommendation",
-            ["All"] + sorted(display_df["Recommendation"].unique().tolist())
+            ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist())
         )
     with f2:
         country_filter = st.selectbox(
             "Filter by Country",
-            ["All"] + sorted(display_df["Country"].unique().tolist())
+            ["All"] + sorted(display_df["Country"].dropna().unique().tolist())
         )
     with f3:
         status_filter = st.selectbox(
             "Filter by Status",
-            ["All"] + sorted(display_df["Status"].unique().tolist())
+            ["All"] + sorted(display_df["Status"].dropna().unique().tolist())
         )
 
     filtered_df = display_df.copy()
@@ -215,7 +225,11 @@ else:
 
     st.markdown("### Detailed Board Analysis")
     for i, job in enumerate(jobs, start=1):
-        header = f"{i}. {job['Company']} - {job['Position']} ({job['Country']}) | Final: {job['Final Score']}"
+        board_overall = job.get("Board Overview Score", job.get("Board Avg"))
+        header = (
+            f"{i}. {job.get('Company', '')} - {job.get('Position', '')} "
+            f"({job.get('Country', '')}) | Board: {board_overall} | Final: {job.get('Final Score', '')}"
+        )
         with st.expander(header):
             st.write("**Job Description**")
             st.write(job.get("Job Description", ""))
@@ -223,8 +237,8 @@ else:
             st.write("**Board Method**")
             st.write(job.get("Board Method", "95% Description / 5% Title"))
 
-            st.write("**Board Average**")
-            st.write(job.get("Board Avg"))
+            st.write("**Board Overview Score (overall)**")
+            st.write(board_overall)
 
             st.write("**Board Scores**")
             st.json(job.get("Board Scores", {}))
