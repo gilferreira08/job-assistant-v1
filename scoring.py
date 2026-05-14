@@ -8,7 +8,6 @@ def auto_technical_suggestion(title, description, country):
     t_fit = title_fit_score(title)
     geo_fit = location_fit_score(country)
 
-    # Split core fit into 3 components using simple keyword lenses
     treasury_keywords = [
         "treasury", "tresorerie", "liquidity", "liquidite", "cash forecasting",
         "prevision de tresorerie", "hedging", "couverture", "fx", "change"
@@ -26,17 +25,11 @@ def auto_technical_suggestion(title, description, country):
     project_fin_score = keyword_hit_score(description, project_fin_keywords)
     debt_funding_score = keyword_hit_score(description, debt_funding_keywords)
 
-    # Seniority proxy from title + strategic wording
-    seniority_keywords = [
-        "manager", "head", "director", "lead", "responsable", "directeur", "senior", "ownership"
-    ]
+    seniority_keywords = ["manager", "head", "director", "lead", "responsable", "directeur", "senior", "ownership"]
     seniority_from_jd = keyword_hit_score(f"{title} {description}", seniority_keywords)
     seniority_score = clamp((seniority_from_jd * 0.6) + (t_fit * 0.4))
 
-    # Tools/systems from tools fit
     tools_score = tools_fit
-
-    # Location fit from target geography
     location_score = geo_fit
 
     auto_weighted = weighted_technical_score(
