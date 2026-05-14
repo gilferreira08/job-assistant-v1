@@ -12,7 +12,6 @@ def init_db():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Base table (latest expected schema)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS jobs (
@@ -40,6 +39,7 @@ def init_db():
             priority TEXT,
             verified_active INTEGER,
             excluded INTEGER,
+            excluded_reason TEXT,
             status TEXT,
             board_scores_json TEXT,
             board_feedback_json TEXT,
@@ -48,7 +48,6 @@ def init_db():
         """
     )
 
-    # Lightweight migrations for existing deployments
     def add_column_if_missing(column_name, column_type):
         cur.execute("PRAGMA table_info(jobs)")
         existing = [row[1] for row in cur.fetchall()]
@@ -75,6 +74,7 @@ def init_db():
     add_column_if_missing("priority", "TEXT")
     add_column_if_missing("verified_active", "INTEGER")
     add_column_if_missing("excluded", "INTEGER")
+    add_column_if_missing("excluded_reason", "TEXT")
     add_column_if_missing("status", "TEXT")
     add_column_if_missing("board_scores_json", "TEXT")
     add_column_if_missing("board_feedback_json", "TEXT")
@@ -95,9 +95,9 @@ def save_job(job):
             treasury_hedging, project_finance, debt_funding, seniority, tools_systems, location_fit,
             weighted_technical_score, auto_technical_score, manual_technical_score,
             board_method, board_avg, final_score, recommendation, priority,
-            verified_active, excluded, status, board_scores_json, board_feedback_json
+            verified_active, excluded, excluded_reason, status, board_scores_json, board_feedback_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job.get("Company", ""),
@@ -123,6 +123,7 @@ def save_job(job):
             job.get("Priority", ""),
             1 if job.get("Verified Active", False) else 0,
             1 if job.get("Excluded", False) else 0,
+            job.get("Excluded Reason", ""),
             job.get("Status", ""),
             json.dumps(job.get("Board Scores", {}), ensure_ascii=False),
             json.dumps(job.get("Board Feedback", {}), ensure_ascii=False),
@@ -170,6 +171,7 @@ def load_jobs():
                 "Priority": r["priority"],
                 "Verified Active": bool(r["verified_active"]) if r["verified_active"] is not None else False,
                 "Excluded": bool(r["excluded"]) if r["excluded"] is not None else False,
+                "Excluded Reason": r["excluded_reason"] if r["excluded_reason"] else "",
                 "Status": r["status"],
                 "Board Scores": json.loads(r["board_scores_json"] or "{}"),
                 "Board Feedback": json.loads(r["board_feedback_json"] or "{}"),
