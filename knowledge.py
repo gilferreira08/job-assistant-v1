@@ -9,17 +9,15 @@ TARGET_GEOS = [
 ]
 
 EXCLUDED_KEYWORDS = [
-    "accounting",
+    "accounting", "comptabilite",
     "audit",
-    "ap",
-    "ar",
-    "intern",
-    "graduate",
-    "junior",
-    "tax",
-    "back office",
+    "ap", "ar",
+    "intern", "internship", "stage",
+    "graduate", "junior", "debutant", "alternance",
+    "tax", "fiscalite",
+    "back office", "back-office",
     "compliance",
-    "pure reporting",
+    "pure reporting", "reporting uniquement",
 ]
 
 BOARD_MEMBERS = [
@@ -32,34 +30,47 @@ BOARD_MEMBERS = [
     "Project Finance Director",
 ]
 
-# Lightweight board "lens" keywords per member
 BOARD_KEYWORDS = {
     "HR Director": [
-        "leadership", "stakeholder", "communication", "collaboration",
-        "international", "cross-functional", "team", "english", "french"
+        "leadership", "management", "communication", "stakeholder",
+        "cross-functional", "team", "international", "culture",
+        "leadership", "communication", "parties prenantes",
+        "transverse", "equipe", "international", "culture"
     ],
     "CFO": [
         "strategic", "capital structure", "funding", "refinancing",
-        "liquidity", "cash flow", "value creation", "governance"
+        "liquidity", "cash flow", "value creation", "governance",
+        "strategie", "structure du capital", "financement", "refinancement",
+        "liquidite", "flux de tresorerie", "creation de valeur", "gouvernance"
     ],
     "Head of Treasury": [
-        "treasury", "liquidity", "cash management", "funding",
-        "hedging", "fx", "interest rate", "tms", "treasury transformation"
+        "treasury", "cash management", "liquidity", "funding", "hedging",
+        "fx", "interest rate", "tms", "treasury transformation",
+        "tresorerie", "gestion de tresorerie", "liquidite", "financement",
+        "couverture", "taux d'interet", "transformation tresorerie"
     ],
     "Hiring Manager": [
         "execution", "delivery", "ownership", "implementation",
-        "problem solving", "hands-on", "operations"
+        "problem solving", "hands-on", "operations",
+        "execution", "livraison", "responsabilite", "mise en oeuvre",
+        "resolution de problemes", "operationnel"
     ],
     "FP&A Manager": [
         "forecast", "budget", "scenario", "analysis", "kpi",
-        "financial modelling", "variance", "planning", "reporting"
+        "financial modelling", "variance", "planning", "reporting",
+        "prevision", "budget", "scenario", "analyse", "kpi",
+        "modelisation financiere", "ecarts", "planification", "reporting"
     ],
     "Financial Risk Manager": [
         "risk", "derivatives", "fx", "interest rate", "hedging",
-        "exposure", "sensitivity", "var", "stress testing"
+        "exposure", "sensitivity", "var", "stress testing",
+        "risque", "derives", "change", "taux", "couverture",
+        "exposition", "sensibilite", "stress test"
     ],
     "Project Finance Director": [
         "project finance", "infrastructure", "dscr", "irr", "cfads",
-        "debt sizing", "bankability", "refinancing", "long-term financing"
+        "debt sizing", "bankability", "refinancing", "long-term financing",
+        "financement de projet", "infrastructure", "dscr", "tri", "cfads",
+        "dimensionnement de la dette", "bancabilite", "refinancement", "financement long terme"
     ],
 }
