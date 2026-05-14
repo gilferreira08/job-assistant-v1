@@ -23,11 +23,29 @@ def normalize(text):
 
 
 def keyword_hit_score(text, keywords):
+    """
+    Calibrated keyword score:
+    - Avoids very low scores when a JD is relevant but wording differs.
+    - Still rewards richer keyword coverage.
+    """
     txt = normalize(text)
     if not keywords:
         return 0.0
+
     hits = sum(1 for kw in keywords if normalize(kw) in txt)
-    return clamp((hits / len(keywords)) * 100)
+    ratio = hits / len(keywords)
+
+    if hits == 0:
+        return 10.0
+    if ratio >= 0.60:
+        return 95.0
+    if ratio >= 0.40:
+        return 85.0
+    if ratio >= 0.25:
+        return 75.0
+    if ratio >= 0.15:
+        return 65.0
+    return 50.0
 
 
 def exclusion_detected(title, description):
@@ -48,24 +66,36 @@ def title_fit_score(title):
         return 95.0
     if any(normalize(r) in t for r in secondary):
         return 80.0
-    if any(x in t for x in ["treasury", "tresorerie", "project finance", "financement de projet", "funding", "financement", "liquidity", "liquidite"]):
+
+    if any(
+        x in t for x in [
+            "treasury", "tresorerie",
+            "project finance", "financement de projet",
+            "funding", "financement",
+            "liquidity", "liquidite",
+            "structured finance", "finance structuree"
+        ]
+    ):
         return 70.0
+
     return 45.0
 
 
 def location_fit_score(country):
     c = normalize(country)
     targets = [normalize(x) for x in CANDIDATE_PROFILE["target_geographies"]]
+
     if c in targets:
         if c in ["france", "portugal", "switzerland", "suisse"]:
             return 100.0
         if c in ["remote europe", "europe remote", "teletravail europe", "remote"]:
             return 95.0
-        if c == "brazil" or c == "bresil":
+        if c in ["brazil", "bresil"]:
             return 90.0
         if c == "luxembourg":
             return 85.0
         return 80.0
+
     return 50.0
 
 
@@ -125,28 +155,75 @@ def priority(score, excluded=False):
 
 
 def board_member_score(member, title, description, country):
+    """
+    Profile-aware board score by member.
+
+    95/5 rule is kept:
+    weighted = raw_description_view * 0.95 + title_fit * 0.05
+    """
     jd_core_fit = keyword_hit_score(description, CANDIDATE_PROFILE["core_strength_keywords"])
     member_lens_fit = keyword_hit_score(description, BOARD_KEYWORDS.get(member, []))
     tools_fit = keyword_hit_score(description, CANDIDATE_PROFILE["tools_keywords"])
     t_fit = title_fit_score(title)
     geo_fit = location_fit_score(country)
 
+    # Calibrated member logic: stronger weight on core JD-profile fit
     if member == "HR Director":
-        raw = (member_lens_fit * 0.45) + (t_fit * 0.20) + (geo_fit * 0.20) + (jd_core_fit * 0.15)
+        raw = (
+            (member_lens_fit * 0.40)
+            + (jd_core_fit * 0.25)
+            + (t_fit * 0.15)
+            + (geo_fit * 0.20)
+        )
     elif member == "CFO":
-        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.35) + (t_fit * 0.15) + (geo_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.25)
+            + (jd_core_fit * 0.50)
+            + (t_fit * 0.15)
+            + (geo_fit * 0.10)
+        )
     elif member == "Head of Treasury":
-        raw = (member_lens_fit * 0.45) + (jd_core_fit * 0.35) + (tools_fit * 0.10) + (t_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.30)
+            + (jd_core_fit * 0.45)
+            + (tools_fit * 0.15)
+            + (t_fit * 0.10)
+        )
     elif member == "Hiring Manager":
-        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.30) + (t_fit * 0.20) + (tools_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.30)
+            + (jd_core_fit * 0.40)
+            + (t_fit * 0.20)
+            + (tools_fit * 0.10)
+        )
     elif member == "FP&A Manager":
-        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.30) + (tools_fit * 0.20) + (t_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.30)
+            + (jd_core_fit * 0.35)
+            + (tools_fit * 0.25)
+            + (t_fit * 0.10)
+        )
     elif member == "Financial Risk Manager":
-        raw = (member_lens_fit * 0.45) + (jd_core_fit * 0.35) + (t_fit * 0.10) + (tools_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.35)
+            + (jd_core_fit * 0.40)
+            + (t_fit * 0.10)
+            + (tools_fit * 0.15)
+        )
     elif member == "Project Finance Director":
-        raw = (member_lens_fit * 0.50) + (jd_core_fit * 0.30) + (t_fit * 0.10) + (geo_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.30)
+            + (jd_core_fit * 0.45)
+            + (t_fit * 0.10)
+            + (geo_fit * 0.15)
+        )
     else:
-        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.30) + (t_fit * 0.20) + (geo_fit * 0.10)
+        raw = (
+            (member_lens_fit * 0.35)
+            + (jd_core_fit * 0.35)
+            + (t_fit * 0.20)
+            + (geo_fit * 0.10)
+        )
 
     raw = clamp(raw)
     weighted = clamp((raw * 0.95) + (t_fit * 0.05))
