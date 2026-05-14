@@ -61,16 +61,12 @@ if run_analysis:
         st.error("Please paste a meaningful job description (at least ~80 characters).")
         st.stop()
 
-    # Auto technical suggestion from JD/title/country
     auto_tech = auto_technical_suggestion(position, job_description, country)
 
-    # Manual technical score from sliders
     manual_tech_score = weighted_technical_score(
         treasury_hedging, project_finance, debt_funding, seniority, tools_systems, location_fit
     )
 
-    # Blended technical score (default behavior)
-    # 70% auto + 30% manual to keep your human control while making JD impactful
     blended_tech_score = round((auto_tech["weighted_technical_score"] * 0.70) + (manual_tech_score * 0.30), 2)
 
     board_scores, board_avg = compute_board_scores(position, job_description, country)
@@ -86,7 +82,6 @@ if run_analysis:
         "source": source,
         "application_link": application_link,
         "job_description": job_description,
-
         "manual_scores": {
             "treasury_hedging": treasury_hedging,
             "project_finance": project_finance,
@@ -96,17 +91,14 @@ if run_analysis:
             "location_fit": location_fit,
             "weighted_technical_score": round(manual_tech_score, 2),
         },
-
         "auto_scores": auto_tech,
         "blended_technical_score": blended_tech_score,
-
         "board_scores": board_scores,
         "board_avg": board_avg,
         "final_score": round(f_score, 2),
         "auto_excluded": auto_excluded,
     }
 
-# Show analysis block only after clicking Run Analysis
 result = st.session_state.analysis_result
 if result:
     st.divider()
@@ -116,7 +108,6 @@ if result:
     c1.metric("Technical Score (Blended)", f"{result['blended_technical_score']} / 100")
     c2.metric("Board Overview Score", f"{result['board_avg']} / 100")
     c3.metric("Final Score", f"{result['final_score']} / 100")
-
     st.caption("Technical (Blended) = 70% Auto (JD-based) + 30% Manual sliders.")
 
     c4, c5 = st.columns(2)
@@ -131,7 +122,6 @@ if result:
             f"- Location Fit: {result['auto_scores']['location_fit']}\n"
             f"- Weighted Technical (Auto): {result['auto_scores']['weighted_technical_score']}"
         )
-
     with c5:
         st.markdown("**Manual Technical Inputs**")
         st.write(
@@ -151,10 +141,8 @@ if result:
     for member in BOARD_MEMBERS:
         data = result["board_scores"].get(member, {})
         cc1, cc2 = st.columns([1, 3])
-
         with cc1:
             st.metric(member, f"{data.get('weighted_score', 0):.2f}")
-
         with cc2:
             st.write(data.get("short_note", "No note available."))
             st.caption(data.get("reason", ""))
@@ -179,20 +167,15 @@ if result:
             "Source": result["source"].strip(),
             "Application Link": result["application_link"].strip(),
             "Job Description": result["job_description"].strip(),
-
-            # Save manual sliders
             "Treasury/Hedging": result["manual_scores"]["treasury_hedging"],
             "Project Finance": result["manual_scores"]["project_finance"],
             "Debt/Funding": result["manual_scores"]["debt_funding"],
             "Seniority": result["manual_scores"]["seniority"],
             "Tools/Systems": result["manual_scores"]["tools_systems"],
             "Location Fit": result["manual_scores"]["location_fit"],
-
-            # Save both auto/manual/blended technical
             "Auto Technical Score": result["auto_scores"]["weighted_technical_score"],
             "Manual Technical Score": result["manual_scores"]["weighted_technical_score"],
             "Weighted Technical Score": result["blended_technical_score"],
-
             "Board Method": "Profile-aware board (95% description / 5% title)",
             "Board Overview Score": result["board_avg"],
             "Board Avg": result["board_avg"],
@@ -238,7 +221,6 @@ if total_jobs == 0:
 else:
     df = pd.DataFrame(jobs)
 
-    # Ensure column exists for older rows
     if "Auto Technical Score" not in df.columns:
         df["Auto Technical Score"] = None
     if "Manual Technical Score" not in df.columns:
@@ -254,20 +236,11 @@ else:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        rec_filter = st.selectbox(
-            "Filter by Recommendation",
-            ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist())
-        )
+        rec_filter = st.selectbox("Filter by Recommendation", ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist()))
     with c2:
-        country_filter = st.selectbox(
-            "Filter by Country",
-            ["All"] + sorted(display_df["Country"].dropna().unique().tolist())
-        )
+        country_filter = st.selectbox("Filter by Country", ["All"] + sorted(display_df["Country"].dropna().unique().tolist()))
     with c3:
-        status_filter = st.selectbox(
-            "Filter by Status",
-            ["All"] + sorted(display_df["Status"].dropna().unique().tolist())
-        )
+        status_filter = st.selectbox("Filter by Status", ["All"] + sorted(display_df["Status"].dropna().unique().tolist()))
 
     filtered = display_df.copy()
     if rec_filter != "All":
@@ -281,10 +254,7 @@ else:
 
     st.markdown("### Detailed Board Analysis")
     for i, job in enumerate(jobs, start=1):
-        header = (
-            f"{i}. {job['Company']} - {job['Position']} "
-            f"| Board: {job.get('Board Avg', 0)} | Final: {job['Final Score']}"
-        )
+        header = f"{i}. {job['Company']} - {job['Position']} | Board: {job.get('Board Avg', 0)} | Final: {job['Final Score']}"
         with st.expander(header):
             st.write("**Job Description**")
             st.write(job.get("Job Description", ""))
