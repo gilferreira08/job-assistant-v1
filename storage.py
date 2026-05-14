@@ -196,3 +196,30 @@ def exists_duplicate(company, position, country):
     row = cur.fetchone()
     conn.close()
     return row is not None
+
+
+def find_duplicate_id(company, position, country):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id FROM jobs
+        WHERE lower(company) = lower(?)
+          AND lower(position) = lower(?)
+          AND lower(country) = lower(?)
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (company.strip(), position.strip(), country.strip()),
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def delete_job_by_id(job_id):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+    conn.commit()
+    conn.close()
