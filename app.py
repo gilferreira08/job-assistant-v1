@@ -40,6 +40,17 @@ with st.form("job_form"):
         tools_systems = st.slider("Tools & Systems Score", 0, 100, 70)
         location_fit = st.slider("Location Fit Score", 0, 100, 90)
 
+        # Live technical score preview for current job (shown below Location Fit)
+        live_tech_score = weighted_technical_score(
+            treasury_hedging,
+            project_finance,
+            debt_funding,
+            seniority,
+            tools_systems,
+            location_fit,
+        )
+        st.info(f"Current Job - Weighted Technical Score: **{live_tech_score:.2f} / 100**")
+
     st.markdown("### Board Analysis (95% Description / 5% Title)")
 
     board_scores = {}
@@ -77,6 +88,16 @@ with st.form("job_form"):
                 key=f"feedback_{member}",
                 height=80
             )
+
+    # Live board + final preview for current job (shown below Project Finance Director section)
+    live_board_avg = round(
+        sum(v["weighted_score"] for v in board_scores.values()) / len(board_scores),
+        2
+    )
+    st.info(f"Current Job - Board Overview Score: **{live_board_avg:.2f} / 100**")
+
+    live_final_score = final_score(live_tech_score, live_board_avg)
+    st.success(f"Current Job - Final Score: **{live_final_score:.2f} / 100**")
 
     verified_active = st.checkbox("Role verified active", value=True)
     excluded = st.checkbox("Out of scope / excluded", value=False)
@@ -116,8 +137,6 @@ if submitted:
         sum(v["weighted_score"] for v in board_scores.values()) / len(board_scores),
         2
     )
-
-    st.info(f"Board Overview Score (overall): **{board_avg} / 100**")
 
     f_score = final_score(tech_score, board_avg)
     rec = recommendation(f_score, verified_active=verified_active, excluded=excluded)
