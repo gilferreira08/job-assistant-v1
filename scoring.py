@@ -1,5 +1,63 @@
+import re
+from typing import Dict, List
+
+from knowledge import BOARD_MEMBERS, BOARD_KEYWORDS
+from candidate_profile import CANDIDATE_PROFILE
+
+
 def clamp(value):
-    return max(0, min(100, float(value)))
+    return max(0.0, min(100.0, float(value)))
+
+
+def normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+
+def keyword_hit_score(text: str, keywords: List[str]) -> float:
+    txt = normalize(text)
+    if not keywords:
+        return 0.0
+    hits = sum(1 for kw in keywords if kw.lower() in txt)
+    return clamp((hits / len(keywords)) * 100)
+
+
+def exclusion_detected(title: str, description: str) -> bool:
+    txt = normalize(f"{title} {description}")
+    for kw in CANDIDATE_PROFILE["excluded_role_keywords"]:
+        if kw.lower() in txt:
+            return True
+    return False
+
+
+def title_fit_score(title: str) -> float:
+    t = normalize(title)
+
+    highest = CANDIDATE_PROFILE["highest_fit_roles"]
+    secondary = CANDIDATE_PROFILE["secondary_fit_roles"]
+
+    if any(r.lower() in t for r in highest):
+        return 95.0
+    if any(r.lower() in t for r in secondary):
+        return 80.0
+    if "treasury" in t or "project finance" in t or "funding" in t or "liquidity" in t:
+        return 70.0
+    return 45.0
+
+
+def location_fit_score(country: str) -> float:
+    c = normalize(country)
+    if c in [normalize(x) for x in CANDIDATE_PROFILE["target_geographies"]]:
+        if c in ["france", "portugal", "switzerland"]:
+            return 100.0
+        if c == "remote europe":
+            return 95.0
+        if c == "brazil":
+            return 90.0
+        if c == "luxembourg":
+            return 85.0
+        return 80.0
+    return 50.0
+
 
 def weighted_technical_score(
     treasury_hedging_score,
@@ -25,14 +83,15 @@ def weighted_technical_score(
         + (location_score * 0.10)
     )
 
+
 def final_score(weighted_technical, board_average):
     weighted_technical = clamp(weighted_technical)
     board_average = clamp(board_average)
     return (weighted_technical * 0.65) + (board_average * 0.35)
 
+
 def recommendation(score, verified_active=True, excluded=False):
     score = clamp(score)
-
     if excluded or not verified_active:
         return "Skip"
     if score >= 80:
@@ -41,9 +100,9 @@ def recommendation(score, verified_active=True, excluded=False):
         return "Consider"
     return "Skip"
 
+
 def priority(score, excluded=False):
     score = clamp(score)
-
     if excluded:
         return "Excluded"
     if score >= 88:
@@ -53,3 +112,61 @@ def priority(score, excluded=False):
     if score >= 70:
         return "Medium"
     return "Low"
+
+
+def board_member_score(member: str, title: str, description: str, country: str) -> Dict:
+    # Shared profile-aware signals
+    jd_core_fit = keyword_hit_score(description, CANDIDATE_PROFILE["core_strength_keywords"])
+    member_lens_fit = keyword_hit_score(description, BOARD_KEYWORDS.get(member, []))
+    tools_fit = keyword_hit_score(description, CANDIDATE_PROFILE["tools_keywords"])
+    t_fit = title_fit_score(title)
+    geo_fit = location_fit_score(country)
+
+    # Member-specific lightweight weighting
+    if member == "HR Director":
+        raw = (member_lens_fit * 0.45) + (t_fit * 0.20) + (geo_fit * 0.20) + (jd_core_fit * 0.15)
+    elif member == "CFO":
+        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.35) + (t_fit * 0.15) + (geo_fit * 0.10)
+    elif member == "Head of Treasury":
+        raw = (member_lens_fit * 0.45) + (jd_core_fit * 0.35) + (tools_fit * 0.10) + (t_fit * 0.10)
+    elif member == "Hiring Manager":
+        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.30) + (t_fit * 0.20) + (tools_fit * 0.10)
+    elif member == "FP&A Manager":
+        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.30) + (tools_fit * 0.20) + (t_fit * 0.10)
+    elif member == "Financial Risk Manager":
+        raw = (member_lens_fit * 0.45) + (jd_core_fit * 0.35) + (t_fit * 0.10) + (tools_fit * 0.10)
+    elif member == "Project Finance Director":
+        raw = (member_lens_fit * 0.50) + (jd_core_fit * 0.30) + (t_fit * 0.10) + (geo_fit * 0.10)
+    else:
+        raw = (member_lens_fit * 0.40) + (jd_core_fit * 0.30) + (t_fit * 0.20) + (geo_fit * 0.10)
+
+    raw = clamp(raw)
+
+    # Your requested 95%/5% structure:
+    # 95% = description-based view (raw)
+    # 5%  = title signal
+    weighted = clamp((raw * 0.95) + (t_fit * 0.05))
+
+    reason = (
+        f"{member}: lens={member_lens_fit:.1f}, core_fit={jd_core_fit:.1f}, "
+        f"title_fit={t_fit:.1f}, geo_fit={geo_fit:.1f}, tools_fit={tools_fit:.1f}"
+    )
+
+    return {
+        "description_score": round(raw, 2),
+        "title_score": round(t_fit, 2),
+        "weighted_score": round(weighted, 2),
+        "reason": reason,
+    }
+
+
+def compute_board_scores(title: str, description: str, country: str):
+    scores = {}
+    for member in BOARD_MEMBERS:
+        scores[member] = board_member_score(member, title, description, country)
+
+    board_avg = round(
+        sum(v["weighted_score"] for v in scores.values()) / len(scores),
+        2
+    )
+    return scores, board_avg
