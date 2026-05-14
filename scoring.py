@@ -43,12 +43,46 @@ def keyword_hit_score(text, keywords):
     return 50.0
 
 
-def exclusion_detected(title, description):
+def get_exclusion_keywords():
+    """
+    Safer exclusion list for regex word-boundary detection.
+    Avoid ultra-short ambiguous tokens like 'ap'/'ar' alone.
+    """
+    return [
+        "accounting",
+        "comptabilite",
+        "audit",
+        "intern",
+        "internship",
+        "stage",
+        "graduate",
+        "junior",
+        "debutant",
+        "alternance",
+        "tax",
+        "fiscalite",
+        "back office",
+        "back-office",
+        "compliance",
+        "pure reporting",
+        "reporting uniquement",
+        "ap/ar",
+        "accounts payable",
+        "accounts receivable",
+    ]
+
+
+def exclusion_reason(title, description):
     txt = normalize(f"{title} {description}")
-    for kw in CANDIDATE_PROFILE["excluded_role_keywords"]:
-        if normalize(kw) in txt:
-            return True
-    return False
+    for kw in get_exclusion_keywords():
+        pattern = r"\b" + re.escape(normalize(kw)) + r"\b"
+        if re.search(pattern, txt):
+            return f"automatic exclusion keyword match: {kw}"
+    return ""
+
+
+def exclusion_detected(title, description):
+    return exclusion_reason(title, description) != ""
 
 
 def title_fit_score(title):
@@ -157,8 +191,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         return "weak"
 
     if member == "HR Director":
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if member_lens_fit >= 70:
             strengths.append("communication/stakeholder profile")
         if geo_fit >= 90:
@@ -174,8 +207,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         action = "Emphasize leadership, cross-functional collaboration, and language fluency."
 
     elif member == "CFO":
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if jd_core_fit >= 75:
             strengths.append("strategic finance relevance")
         if member_lens_fit >= 70:
@@ -191,8 +223,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         action = "Highlight value creation, financing strategy, and executive impact."
 
     elif member == "Head of Treasury":
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if jd_core_fit >= 75:
             strengths.append("treasury core alignment")
         if member_lens_fit >= 70:
@@ -206,8 +237,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         action = "Stress treasury ownership, liquidity governance, and hedging sophistication."
 
     elif member == "Hiring Manager":
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if member_lens_fit >= 70:
             strengths.append("execution readiness")
         if jd_core_fit >= 70:
@@ -221,8 +251,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         action = "Demonstrate quick-win delivery and practical implementation capacity."
 
     elif member == "FP&A Manager":
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if member_lens_fit >= 70:
             strengths.append("forecasting/scenario fit")
         if jd_core_fit >= 70:
@@ -236,8 +265,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         action = "Show DSCR/IRR/CFADS and scenario-analysis impact."
 
     elif member == "Financial Risk Manager":
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if member_lens_fit >= 70:
             strengths.append("risk/hedging relevance")
         if jd_core_fit >= 70:
@@ -251,8 +279,7 @@ def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, ge
         action = "Highlight FX/IR hedging strategy and risk governance outcomes."
 
     else:  # Project Finance Director
-        strengths = []
-        gaps = []
+        strengths, gaps = [], []
         if member_lens_fit >= 70:
             strengths.append("project finance technical fit")
         if jd_core_fit >= 70:
