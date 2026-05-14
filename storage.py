@@ -11,6 +11,8 @@ def get_conn():
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
+
+    # Base table (latest expected schema)
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS jobs (
@@ -45,6 +47,39 @@ def init_db():
         )
         """
     )
+
+    # Lightweight migrations for existing deployments
+    def add_column_if_missing(column_name, column_type):
+        cur.execute("PRAGMA table_info(jobs)")
+        existing = [row[1] for row in cur.fetchall()]
+        if column_name not in existing:
+            cur.execute(f"ALTER TABLE jobs ADD COLUMN {column_name} {column_type}")
+
+    add_column_if_missing("location", "TEXT")
+    add_column_if_missing("source", "TEXT")
+    add_column_if_missing("application_link", "TEXT")
+    add_column_if_missing("job_description", "TEXT")
+    add_column_if_missing("treasury_hedging", "REAL")
+    add_column_if_missing("project_finance", "REAL")
+    add_column_if_missing("debt_funding", "REAL")
+    add_column_if_missing("seniority", "REAL")
+    add_column_if_missing("tools_systems", "REAL")
+    add_column_if_missing("location_fit", "REAL")
+    add_column_if_missing("weighted_technical_score", "REAL")
+    add_column_if_missing("auto_technical_score", "REAL")
+    add_column_if_missing("manual_technical_score", "REAL")
+    add_column_if_missing("board_method", "TEXT")
+    add_column_if_missing("board_avg", "REAL")
+    add_column_if_missing("final_score", "REAL")
+    add_column_if_missing("recommendation", "TEXT")
+    add_column_if_missing("priority", "TEXT")
+    add_column_if_missing("verified_active", "INTEGER")
+    add_column_if_missing("excluded", "INTEGER")
+    add_column_if_missing("status", "TEXT")
+    add_column_if_missing("board_scores_json", "TEXT")
+    add_column_if_missing("board_feedback_json", "TEXT")
+    add_column_if_missing("created_at", "TEXT")
+
     conn.commit()
     conn.close()
 
@@ -52,6 +87,7 @@ def init_db():
 def save_job(job):
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute(
         """
         INSERT INTO jobs (
@@ -64,34 +100,35 @@ def save_job(job):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            job.get("Company"),
-            job.get("Position"),
-            job.get("Location"),
-            job.get("Country"),
-            job.get("Source"),
-            job.get("Application Link"),
-            job.get("Job Description"),
-            job.get("Treasury/Hedging"),
-            job.get("Project Finance"),
-            job.get("Debt/Funding"),
-            job.get("Seniority"),
-            job.get("Tools/Systems"),
-            job.get("Location Fit"),
-            job.get("Weighted Technical Score"),
-            job.get("Auto Technical Score"),
-            job.get("Manual Technical Score"),
-            job.get("Board Method"),
-            job.get("Board Avg"),
-            job.get("Final Score"),
-            job.get("Recommendation"),
-            job.get("Priority"),
-            1 if job.get("Verified Active") else 0,
-            1 if job.get("Excluded") else 0,
-            job.get("Status"),
+            job.get("Company", ""),
+            job.get("Position", ""),
+            job.get("Location", ""),
+            job.get("Country", ""),
+            job.get("Source", ""),
+            job.get("Application Link", ""),
+            job.get("Job Description", ""),
+            job.get("Treasury/Hedging", 0),
+            job.get("Project Finance", 0),
+            job.get("Debt/Funding", 0),
+            job.get("Seniority", 0),
+            job.get("Tools/Systems", 0),
+            job.get("Location Fit", 0),
+            job.get("Weighted Technical Score", 0),
+            job.get("Auto Technical Score", 0),
+            job.get("Manual Technical Score", 0),
+            job.get("Board Method", ""),
+            job.get("Board Avg", 0),
+            job.get("Final Score", 0),
+            job.get("Recommendation", ""),
+            job.get("Priority", ""),
+            1 if job.get("Verified Active", False) else 0,
+            1 if job.get("Excluded", False) else 0,
+            job.get("Status", ""),
             json.dumps(job.get("Board Scores", {}), ensure_ascii=False),
             json.dumps(job.get("Board Feedback", {}), ensure_ascii=False),
         ),
     )
+
     conn.commit()
     conn.close()
 
@@ -131,8 +168,8 @@ def load_jobs():
                 "Final Score": r["final_score"],
                 "Recommendation": r["recommendation"],
                 "Priority": r["priority"],
-                "Verified Active": bool(r["verified_active"]),
-                "Excluded": bool(r["excluded"]),
+                "Verified Active": bool(r["verified_active"]) if r["verified_active"] is not None else False,
+                "Excluded": bool(r["excluded"]) if r["excluded"] is not None else False,
                 "Status": r["status"],
                 "Board Scores": json.loads(r["board_scores_json"] or "{}"),
                 "Board Feedback": json.loads(r["board_feedback_json"] or "{}"),
