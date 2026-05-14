@@ -26,6 +26,7 @@ def keyword_hit_score(text, keywords):
     txt = normalize(text)
     if not keywords:
         return 0.0
+
     hits = sum(1 for kw in keywords if normalize(kw) in txt)
     ratio = hits / len(keywords)
 
@@ -59,14 +60,25 @@ def title_fit_score(title):
         return 95.0
     if any(normalize(r) in t for r in secondary):
         return 80.0
-    if any(x in t for x in ["treasury", "tresorerie", "project finance", "financement de projet", "funding", "financement", "liquidity", "liquidite"]):
+
+    if any(
+        x in t for x in [
+            "treasury", "tresorerie",
+            "project finance", "financement de projet",
+            "funding", "financement",
+            "liquidity", "liquidite",
+            "structured finance", "finance structuree"
+        ]
+    ):
         return 70.0
+
     return 45.0
 
 
 def location_fit_score(country):
     c = normalize(country)
     targets = [normalize(x) for x in CANDIDATE_PROFILE["target_geographies"]]
+
     if c in targets:
         if c in ["france", "portugal", "switzerland", "suisse"]:
             return 100.0
@@ -77,6 +89,7 @@ def location_fit_score(country):
         if c == "luxembourg":
             return 85.0
         return 80.0
+
     return 50.0
 
 
@@ -133,6 +146,134 @@ def priority(score, excluded=False):
     return "Low"
 
 
+def board_member_note(member, member_lens_fit, jd_core_fit, tools_fit, t_fit, geo_fit):
+    def label(v):
+        if v >= 85:
+            return "strong"
+        if v >= 70:
+            return "good"
+        if v >= 55:
+            return "moderate"
+        return "weak"
+
+    if member == "HR Director":
+        strengths = []
+        gaps = []
+        if member_lens_fit >= 70:
+            strengths.append("communication/stakeholder profile")
+        if geo_fit >= 90:
+            strengths.append("international/location alignment")
+        if t_fit >= 75:
+            strengths.append("seniority/title coherence")
+        if member_lens_fit < 60:
+            gaps.append("people leadership evidence")
+        if t_fit < 60:
+            gaps.append("role seniority signal")
+        if geo_fit < 70:
+            gaps.append("mobility/location fit")
+        action = "Emphasize leadership, cross-functional collaboration, and language fluency."
+
+    elif member == "CFO":
+        strengths = []
+        gaps = []
+        if jd_core_fit >= 75:
+            strengths.append("strategic finance relevance")
+        if member_lens_fit >= 70:
+            strengths.append("funding/capital structure exposure")
+        if t_fit >= 75:
+            strengths.append("decision-level role positioning")
+        if jd_core_fit < 60:
+            gaps.append("business impact clarity")
+        if member_lens_fit < 60:
+            gaps.append("capital structure/funding depth")
+        if geo_fit < 70:
+            gaps.append("market fit")
+        action = "Highlight value creation, financing strategy, and executive impact."
+
+    elif member == "Head of Treasury":
+        strengths = []
+        gaps = []
+        if jd_core_fit >= 75:
+            strengths.append("treasury core alignment")
+        if member_lens_fit >= 70:
+            strengths.append("liquidity/funding/hedging fit")
+        if tools_fit >= 70:
+            strengths.append("TMS/tools capability")
+        if member_lens_fit < 60:
+            gaps.append("treasury ownership scope")
+        if tools_fit < 60:
+            gaps.append("systems/automation depth")
+        action = "Stress treasury ownership, liquidity governance, and hedging sophistication."
+
+    elif member == "Hiring Manager":
+        strengths = []
+        gaps = []
+        if member_lens_fit >= 70:
+            strengths.append("execution readiness")
+        if jd_core_fit >= 70:
+            strengths.append("problem-solving fit")
+        if t_fit >= 70:
+            strengths.append("role seniority alignment")
+        if member_lens_fit < 60:
+            gaps.append("hands-on delivery evidence")
+        if jd_core_fit < 60:
+            gaps.append("immediate operational impact")
+        action = "Demonstrate quick-win delivery and practical implementation capacity."
+
+    elif member == "FP&A Manager":
+        strengths = []
+        gaps = []
+        if member_lens_fit >= 70:
+            strengths.append("forecasting/scenario fit")
+        if jd_core_fit >= 70:
+            strengths.append("analytical rigor")
+        if tools_fit >= 70:
+            strengths.append("modeling/tools readiness")
+        if member_lens_fit < 60:
+            gaps.append("planning/scenario depth")
+        if tools_fit < 60:
+            gaps.append("modeling tooling evidence")
+        action = "Show DSCR/IRR/CFADS and scenario-analysis impact."
+
+    elif member == "Financial Risk Manager":
+        strengths = []
+        gaps = []
+        if member_lens_fit >= 70:
+            strengths.append("risk/hedging relevance")
+        if jd_core_fit >= 70:
+            strengths.append("exposure management fit")
+        if tools_fit >= 70:
+            strengths.append("risk analytics tooling")
+        if member_lens_fit < 60:
+            gaps.append("derivatives/risk framework detail")
+        if jd_core_fit < 60:
+            gaps.append("risk governance ownership")
+        action = "Highlight FX/IR hedging strategy and risk governance outcomes."
+
+    else:  # Project Finance Director
+        strengths = []
+        gaps = []
+        if member_lens_fit >= 70:
+            strengths.append("project finance technical fit")
+        if jd_core_fit >= 70:
+            strengths.append("structuring/refinancing relevance")
+        if t_fit >= 70:
+            strengths.append("senior mandate alignment")
+        if member_lens_fit < 60:
+            gaps.append("DSCR/IRR/CFADS evidence")
+        if jd_core_fit < 60:
+            gaps.append("infrastructure financing depth")
+        action = "Emphasize debt sizing, bankability, and long-term financing strategy."
+
+    strengths_txt = ", ".join(strengths[:2]) if strengths else "limited clear strengths"
+    gaps_txt = ", ".join(gaps[:2]) if gaps else "no major gaps detected"
+
+    avg_signal = (member_lens_fit + jd_core_fit + tools_fit + t_fit + geo_fit) / 5
+    overall = label(avg_signal).capitalize()
+
+    return f"{overall} fit. Strengths: {strengths_txt}. Gaps: {gaps_txt}. Action: {action}"
+
+
 def board_member_score(member, title, description, country):
     jd_core_fit = keyword_hit_score(description, CANDIDATE_PROFILE["core_strength_keywords"])
     member_lens_fit = keyword_hit_score(description, BOARD_KEYWORDS.get(member, []))
@@ -160,47 +301,13 @@ def board_member_score(member, title, description, country):
     raw = clamp(raw)
     weighted = clamp((raw * 0.95) + (t_fit * 0.05))
 
-    def level_label(v):
-        if v >= 85:
-            return "Strong"
-        if v >= 70:
-            return "Good"
-        if v >= 55:
-            return "Moderate"
-        return "Weak"
-
-    strengths = []
-    gaps = []
-
-    if member_lens_fit >= 70:
-        strengths.append("member-focus alignment")
-    else:
-        gaps.append("member-focus keywords")
-
-    if jd_core_fit >= 70:
-        strengths.append("core profile fit")
-    else:
-        gaps.append("core treasury/project-finance fit")
-
-    if tools_fit >= 70:
-        strengths.append("tools/systems match")
-    else:
-        gaps.append("tools/systems evidence")
-
-    if geo_fit >= 90:
-        strengths.append("excellent location fit")
-    elif geo_fit < 70:
-        gaps.append("location fit")
-
-    if t_fit >= 80:
-        strengths.append("title relevance")
-    elif t_fit < 60:
-        gaps.append("title relevance")
-
-    short_note = (
-        f"{level_label(weighted)} fit. "
-        f"Strengths: {', '.join(strengths[:2]) if strengths else 'limited clear strengths'}. "
-        f"Gaps: {', '.join(gaps[:2]) if gaps else 'no major gaps detected'}."
+    short_note = board_member_note(
+        member=member,
+        member_lens_fit=member_lens_fit,
+        jd_core_fit=jd_core_fit,
+        tools_fit=tools_fit,
+        t_fit=t_fit,
+        geo_fit=geo_fit,
     )
 
     reason = (
@@ -221,6 +328,7 @@ def compute_board_scores(title, description, country):
     scores = {}
     for member in BOARD_MEMBERS:
         scores[member] = board_member_score(member, title, description, country)
+
     board_avg = round(sum(v["weighted_score"] for v in scores.values()) / len(scores), 2)
     return scores, board_avg
 
@@ -239,8 +347,7 @@ def auto_technical_suggestion(title, description, country):
         "capital structure", "structure du capital"
     ]
     seniority_keywords = [
-        "manager", "head", "director", "lead",
-        "responsable", "directeur", "senior", "ownership", "pilotage"
+        "manager", "head", "director", "lead", "responsable", "directeur", "senior", "ownership", "pilotage"
     ]
 
     treasury_score = keyword_hit_score(description, treasury_keywords)
