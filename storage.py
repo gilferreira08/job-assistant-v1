@@ -1,6 +1,5 @@
 import sqlite3
 import json
-from typing import List, Dict, Any
 
 DB_PATH = "jobs.db"
 
@@ -30,6 +29,8 @@ def init_db():
             tools_systems REAL,
             location_fit REAL,
             weighted_technical_score REAL,
+            auto_technical_score REAL,
+            manual_technical_score REAL,
             board_method TEXT,
             board_avg REAL,
             final_score REAL,
@@ -48,7 +49,7 @@ def init_db():
     conn.close()
 
 
-def save_job(job: Dict[str, Any]):
+def save_job(job):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
@@ -56,10 +57,11 @@ def save_job(job: Dict[str, Any]):
         INSERT INTO jobs (
             company, position, location, country, source, application_link, job_description,
             treasury_hedging, project_finance, debt_funding, seniority, tools_systems, location_fit,
-            weighted_technical_score, board_method, board_avg, final_score, recommendation, priority,
+            weighted_technical_score, auto_technical_score, manual_technical_score,
+            board_method, board_avg, final_score, recommendation, priority,
             verified_active, excluded, status, board_scores_json, board_feedback_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job.get("Company"),
@@ -76,6 +78,8 @@ def save_job(job: Dict[str, Any]):
             job.get("Tools/Systems"),
             job.get("Location Fit"),
             job.get("Weighted Technical Score"),
+            job.get("Auto Technical Score"),
+            job.get("Manual Technical Score"),
             job.get("Board Method"),
             job.get("Board Avg"),
             job.get("Final Score"),
@@ -92,7 +96,7 @@ def save_job(job: Dict[str, Any]):
     conn.close()
 
 
-def load_jobs() -> List[Dict[str, Any]]:
+def load_jobs():
     conn = get_conn()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -119,6 +123,8 @@ def load_jobs() -> List[Dict[str, Any]]:
                 "Tools/Systems": r["tools_systems"],
                 "Location Fit": r["location_fit"],
                 "Weighted Technical Score": r["weighted_technical_score"],
+                "Auto Technical Score": r["auto_technical_score"],
+                "Manual Technical Score": r["manual_technical_score"],
                 "Board Method": r["board_method"],
                 "Board Overview Score": r["board_avg"],
                 "Board Avg": r["board_avg"],
@@ -135,7 +141,7 @@ def load_jobs() -> List[Dict[str, Any]]:
     return jobs
 
 
-def exists_duplicate(company: str, position: str, country: str) -> bool:
+def exists_duplicate(company, position, country):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
