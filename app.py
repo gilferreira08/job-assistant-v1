@@ -17,7 +17,6 @@ st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
 st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
 st.caption("Paste job info (EN or FR), then click Run Analysis.")
 
-# --- Init ---
 init_db()
 if "jobs" not in st.session_state:
     st.session_state.jobs = load_jobs()
@@ -27,9 +26,6 @@ if "analysis_result" not in st.session_state:
 
 st.subheader("Add Job")
 
-# =========================
-# INPUT FORM
-# =========================
 with st.form("job_form"):
     col1, col2 = st.columns(2)
 
@@ -52,11 +48,7 @@ with st.form("job_form"):
 
     run_analysis = st.form_submit_button("Run Analysis")
 
-# =========================
-# RUN ANALYSIS
-# =========================
 if run_analysis:
-    # Validation
     if not company.strip():
         st.error("Company is required.")
         st.session_state.analysis_result = None
@@ -72,25 +64,18 @@ if run_analysis:
         st.session_state.analysis_result = None
         st.stop()
 
-    # Auto + manual technical
     auto_tech = auto_technical_suggestion(position, job_description, country)
     manual_tech_score = weighted_technical_score(
         treasury_hedging, project_finance, debt_funding, seniority, tools_systems, location_fit
     )
-
-    # Blend: 70% auto + 30% manual
     blended_tech_score = round((auto_tech["weighted_technical_score"] * 0.70) + (manual_tech_score * 0.30), 2)
 
-    # Board
     board_scores, board_avg = compute_board_scores(position, job_description, country)
-
-    # Robust fallback if scoring returns unexpected shape
     if not isinstance(board_scores, dict):
         board_scores = {}
     if board_avg is None:
         board_avg = 0.0
 
-    # Final
     f_score = final_score(blended_tech_score, board_avg)
     auto_excluded = exclusion_detected(position, job_description)
 
@@ -102,7 +87,6 @@ if run_analysis:
         "source": source,
         "application_link": application_link,
         "job_description": job_description,
-
         "manual_scores": {
             "treasury_hedging": treasury_hedging,
             "project_finance": project_finance,
@@ -112,20 +96,14 @@ if run_analysis:
             "location_fit": location_fit,
             "weighted_technical_score": round(manual_tech_score, 2),
         },
-
         "auto_scores": auto_tech,
         "blended_technical_score": blended_tech_score,
-
         "board_scores": board_scores,
         "board_avg": round(float(board_avg), 2),
-
         "final_score": round(f_score, 2),
         "auto_excluded": auto_excluded,
     }
 
-# =========================
-# ANALYSIS DISPLAY
-# =========================
 result = st.session_state.analysis_result
 if result is not None:
     st.divider()
@@ -136,7 +114,6 @@ if result is not None:
     c1.metric("Technical Score (Blended)", f"{result.get('blended_technical_score', 0)} / 100")
     c2.metric("Board Overview Score", f"{result.get('board_avg', 0)} / 100")
     c3.metric("Final Score", f"{result.get('final_score', 0)} / 100")
-
     st.caption("Technical (Blended) = 70% Auto (JD-based) + 30% Manual sliders.")
 
     c4, c5 = st.columns(2)
@@ -195,6 +172,17 @@ if result is not None:
             st.stop()
 
         excluded = excluded_manual or result.get("auto_excluded", False)
+
+        # Exclusion reason tracking
+        if excluded_manual and result.get("auto_excluded", False):
+            excluded_reason = "manual override + automatic exclusion keyword match"
+        elif excluded_manual:
+            excluded_reason = "manual override"
+        elif result.get("auto_excluded", False):
+            excluded_reason = "automatic exclusion keyword match"
+        else:
+            excluded_reason = ""
+
         rec = recommendation(result.get("final_score", 0), verified_active=verified_active, excluded=excluded)
         prio = priority(result.get("final_score", 0), excluded=excluded)
 
@@ -227,6 +215,7 @@ if result is not None:
             "Priority": prio,
             "Verified Active": verified_active,
             "Excluded": excluded,
+            "Excluded Reason": excluded_reason,
             "Status": "Open" if verified_active and not excluded else "Excluded",
             "Board Scores": result.get("board_scores", {}),
             "Board Feedback": {},
@@ -237,9 +226,6 @@ if result is not None:
         st.success("Job saved successfully.")
         st.session_state.analysis_result = None
 
-# =========================
-# DASHBOARD METRICS
-# =========================
 st.divider()
 st.subheader("Dashboard Metrics")
 
@@ -259,9 +245,6 @@ m4.metric("Skip", skip_count)
 m5.metric("Avg Final Score", avg_final_score)
 m6.metric("Avg Board Overview", avg_board)
 
-# =========================
-# TABLE
-# =========================
 st.divider()
 st.subheader("Jobs Table")
 
@@ -274,31 +257,24 @@ else:
         df["Auto Technical Score"] = None
     if "Manual Technical Score" not in df.columns:
         df["Manual Technical Score"] = None
+    if "Excluded Reason" not in df.columns:
+        df["Excluded Reason"] = ""
 
     display_cols = [
         "Company", "Position", "Country", "Source",
         "Auto Technical Score", "Manual Technical Score", "Weighted Technical Score",
         "Board Overview Score", "Final Score",
-        "Recommendation", "Priority", "Status", "Excluded"
+        "Recommendation", "Priority", "Status", "Excluded", "Excluded Reason"
     ]
     display_df = df[display_cols].copy()
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        rec_filter = st.selectbox(
-            "Filter by Recommendation",
-            ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist())
-        )
+        rec_filter = st.selectbox("Filter by Recommendation", ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist()))
     with c2:
-        country_filter = st.selectbox(
-            "Filter by Country",
-            ["All"] + sorted(display_df["Country"].dropna().unique().tolist())
-        )
+        country_filter = st.selectbox("Filter by Country", ["All"] + sorted(display_df["Country"].dropna().unique().tolist()))
     with c3:
-        status_filter = st.selectbox(
-            "Filter by Status",
-            ["All"] + sorted(display_df["Status"].dropna().unique().tolist())
-        )
+        status_filter = st.selectbox("Filter by Status", ["All"] + sorted(display_df["Status"].dropna().unique().tolist()))
 
     filtered = display_df.copy()
     if rec_filter != "All":
@@ -314,7 +290,8 @@ else:
     for i, job in enumerate(jobs, start=1):
         header = (
             f"{i}. {job.get('Company', '')} - {job.get('Position', '')} "
-            f"| Board: {job.get('Board Avg', 0)} | Final: {job.get('Final Score', 0)}"
+            f"| Board: {job.get('Board Avg', 0)} | Final: {job.get('Final Score', 0)} "
+            f"| Excluded Reason: {job.get('Excluded Reason', '') or 'None'}"
         )
         with st.expander(header):
             st.write("**Job Description**")
@@ -324,6 +301,10 @@ else:
             st.write(f"- Auto Technical: {job.get('Auto Technical Score', 'N/A')}")
             st.write(f"- Manual Technical: {job.get('Manual Technical Score', 'N/A')}")
             st.write(f"- Blended Technical: {job.get('Weighted Technical Score', 'N/A')}")
+
+            st.write("**Exclusion**")
+            st.write(f"- Excluded: {job.get('Excluded', False)}")
+            st.write(f"- Excluded Reason: {job.get('Excluded Reason', '') or 'None'}")
 
             st.write("**Board Scores**")
             st.json(job.get("Board Scores", {}))
