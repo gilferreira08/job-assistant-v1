@@ -17,6 +17,7 @@ st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
 st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
 st.caption("Paste job info (EN or FR), then click Run Analysis.")
 
+# --- Init ---
 init_db()
 if "jobs" not in st.session_state:
     st.session_state.jobs = load_jobs()
@@ -26,6 +27,9 @@ if "analysis_result" not in st.session_state:
 
 st.subheader("Add Job")
 
+# =========================
+# INPUT FORM
+# =========================
 with st.form("job_form"):
     col1, col2 = st.columns(2)
 
@@ -48,30 +52,46 @@ with st.form("job_form"):
 
     run_analysis = st.form_submit_button("Run Analysis")
 
+# =========================
+# RUN ANALYSIS
+# =========================
 if run_analysis:
+    # Validation
     if not company.strip():
         st.error("Company is required.")
+        st.session_state.analysis_result = None
         st.stop()
 
     if not position.strip():
         st.error("Position is required.")
+        st.session_state.analysis_result = None
         st.stop()
 
     if not job_description or len(job_description.strip()) < 80:
         st.error("Please paste a meaningful job description (at least ~80 characters).")
+        st.session_state.analysis_result = None
         st.stop()
 
+    # Auto + manual technical
     auto_tech = auto_technical_suggestion(position, job_description, country)
-
     manual_tech_score = weighted_technical_score(
         treasury_hedging, project_finance, debt_funding, seniority, tools_systems, location_fit
     )
 
+    # Blend: 70% auto + 30% manual
     blended_tech_score = round((auto_tech["weighted_technical_score"] * 0.70) + (manual_tech_score * 0.30), 2)
 
+    # Board
     board_scores, board_avg = compute_board_scores(position, job_description, country)
-    f_score = final_score(blended_tech_score, board_avg)
 
+    # Robust fallback if scoring returns unexpected shape
+    if not isinstance(board_scores, dict):
+        board_scores = {}
+    if board_avg is None:
+        board_avg = 0.0
+
+    # Final
+    f_score = final_score(blended_tech_score, board_avg)
     auto_excluded = exclusion_detected(position, job_description)
 
     st.session_state.analysis_result = {
@@ -82,6 +102,7 @@ if run_analysis:
         "source": source,
         "application_link": application_link,
         "job_description": job_description,
+
         "manual_scores": {
             "treasury_hedging": treasury_hedging,
             "project_finance": project_finance,
@@ -91,61 +112,79 @@ if run_analysis:
             "location_fit": location_fit,
             "weighted_technical_score": round(manual_tech_score, 2),
         },
+
         "auto_scores": auto_tech,
         "blended_technical_score": blended_tech_score,
+
         "board_scores": board_scores,
-        "board_avg": board_avg,
+        "board_avg": round(float(board_avg), 2),
+
         "final_score": round(f_score, 2),
         "auto_excluded": auto_excluded,
     }
 
+# =========================
+# ANALYSIS DISPLAY
+# =========================
 result = st.session_state.analysis_result
-if result:
+if result is not None:
     st.divider()
     st.subheader("Analysis Results")
+    st.caption(f"Debug: board members loaded = {len(result.get('board_scores', {}))}")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Technical Score (Blended)", f"{result['blended_technical_score']} / 100")
-    c2.metric("Board Overview Score", f"{result['board_avg']} / 100")
-    c3.metric("Final Score", f"{result['final_score']} / 100")
+    c1.metric("Technical Score (Blended)", f"{result.get('blended_technical_score', 0)} / 100")
+    c2.metric("Board Overview Score", f"{result.get('board_avg', 0)} / 100")
+    c3.metric("Final Score", f"{result.get('final_score', 0)} / 100")
+
     st.caption("Technical (Blended) = 70% Auto (JD-based) + 30% Manual sliders.")
 
     c4, c5 = st.columns(2)
     with c4:
         st.markdown("**Auto Technical Suggestion (from JD)**")
+        auto = result.get("auto_scores", {})
         st.write(
-            f"- Treasury/Hedging: {result['auto_scores']['treasury_hedging']}\n"
-            f"- Project Finance: {result['auto_scores']['project_finance']}\n"
-            f"- Debt/Funding: {result['auto_scores']['debt_funding']}\n"
-            f"- Seniority: {result['auto_scores']['seniority']}\n"
-            f"- Tools/Systems: {result['auto_scores']['tools_systems']}\n"
-            f"- Location Fit: {result['auto_scores']['location_fit']}\n"
-            f"- Weighted Technical (Auto): {result['auto_scores']['weighted_technical_score']}"
-        )
-    with c5:
-        st.markdown("**Manual Technical Inputs**")
-        st.write(
-            f"- Treasury/Hedging: {result['manual_scores']['treasury_hedging']}\n"
-            f"- Project Finance: {result['manual_scores']['project_finance']}\n"
-            f"- Debt/Funding: {result['manual_scores']['debt_funding']}\n"
-            f"- Seniority: {result['manual_scores']['seniority']}\n"
-            f"- Tools/Systems: {result['manual_scores']['tools_systems']}\n"
-            f"- Location Fit: {result['manual_scores']['location_fit']}\n"
-            f"- Weighted Technical (Manual): {result['manual_scores']['weighted_technical_score']}"
+            f"- Treasury/Hedging: {auto.get('treasury_hedging', 0)}\n"
+            f"- Project Finance: {auto.get('project_finance', 0)}\n"
+            f"- Debt/Funding: {auto.get('debt_funding', 0)}\n"
+            f"- Seniority: {auto.get('seniority', 0)}\n"
+            f"- Tools/Systems: {auto.get('tools_systems', 0)}\n"
+            f"- Location Fit: {auto.get('location_fit', 0)}\n"
+            f"- Weighted Technical (Auto): {auto.get('weighted_technical_score', 0)}"
         )
 
-    if result["auto_excluded"]:
+    with c5:
+        st.markdown("**Manual Technical Inputs**")
+        man = result.get("manual_scores", {})
+        st.write(
+            f"- Treasury/Hedging: {man.get('treasury_hedging', 0)}\n"
+            f"- Project Finance: {man.get('project_finance', 0)}\n"
+            f"- Debt/Funding: {man.get('debt_funding', 0)}\n"
+            f"- Seniority: {man.get('seniority', 0)}\n"
+            f"- Tools/Systems: {man.get('tools_systems', 0)}\n"
+            f"- Location Fit: {man.get('location_fit', 0)}\n"
+            f"- Weighted Technical (Manual): {man.get('weighted_technical_score', 0)}"
+        )
+
+    if result.get("auto_excluded", False):
         st.warning("Auto exclusion detected from role/title keywords. Review before saving.")
 
     st.markdown("### Board Details")
-    for member in BOARD_MEMBERS:
-        data = result["board_scores"].get(member, {})
-        cc1, cc2 = st.columns([1, 3])
-        with cc1:
-            st.metric(member, f"{data.get('weighted_score', 0):.2f}")
-        with cc2:
-            st.write(data.get("short_note", "No note available."))
-            st.caption(data.get("reason", ""))
+    board_data = result.get("board_scores", {})
+
+    if not board_data:
+        st.warning("Board analysis not available yet. Please click Run Analysis.")
+    else:
+        for member in BOARD_MEMBERS:
+            data = board_data.get(member, {})
+            cc1, cc2 = st.columns([1, 3])
+
+            with cc1:
+                st.metric(member, f"{data.get('weighted_score', 0):.2f}")
+
+            with cc2:
+                st.write(data.get("short_note", "No note available."))
+                st.caption(data.get("reason", "No detailed reason available."))
 
     verified_active = st.checkbox("Role verified active", value=True)
     excluded_manual = st.checkbox("Out of scope / excluded (manual override)", value=False)
@@ -155,37 +194,41 @@ if result:
             st.warning("Duplicate detected: same Company + Position + Country already exists.")
             st.stop()
 
-        excluded = excluded_manual or result["auto_excluded"]
-        rec = recommendation(result["final_score"], verified_active=verified_active, excluded=excluded)
-        prio = priority(result["final_score"], excluded=excluded)
+        excluded = excluded_manual or result.get("auto_excluded", False)
+        rec = recommendation(result.get("final_score", 0), verified_active=verified_active, excluded=excluded)
+        prio = priority(result.get("final_score", 0), excluded=excluded)
 
         new_job = {
-            "Company": result["company"].strip(),
-            "Position": result["position"].strip(),
-            "Location": result["location"].strip(),
-            "Country": result["country"],
-            "Source": result["source"].strip(),
-            "Application Link": result["application_link"].strip(),
-            "Job Description": result["job_description"].strip(),
-            "Treasury/Hedging": result["manual_scores"]["treasury_hedging"],
-            "Project Finance": result["manual_scores"]["project_finance"],
-            "Debt/Funding": result["manual_scores"]["debt_funding"],
-            "Seniority": result["manual_scores"]["seniority"],
-            "Tools/Systems": result["manual_scores"]["tools_systems"],
-            "Location Fit": result["manual_scores"]["location_fit"],
-            "Auto Technical Score": result["auto_scores"]["weighted_technical_score"],
-            "Manual Technical Score": result["manual_scores"]["weighted_technical_score"],
-            "Weighted Technical Score": result["blended_technical_score"],
+            "Company": result.get("company", "").strip(),
+            "Position": result.get("position", "").strip(),
+            "Location": result.get("location", "").strip(),
+            "Country": result.get("country", ""),
+            "Source": result.get("source", "").strip(),
+            "Application Link": result.get("application_link", "").strip(),
+            "Job Description": result.get("job_description", "").strip(),
+
+            "Treasury/Hedging": result.get("manual_scores", {}).get("treasury_hedging", 0),
+            "Project Finance": result.get("manual_scores", {}).get("project_finance", 0),
+            "Debt/Funding": result.get("manual_scores", {}).get("debt_funding", 0),
+            "Seniority": result.get("manual_scores", {}).get("seniority", 0),
+            "Tools/Systems": result.get("manual_scores", {}).get("tools_systems", 0),
+            "Location Fit": result.get("manual_scores", {}).get("location_fit", 0),
+
+            "Auto Technical Score": result.get("auto_scores", {}).get("weighted_technical_score", 0),
+            "Manual Technical Score": result.get("manual_scores", {}).get("weighted_technical_score", 0),
+            "Weighted Technical Score": result.get("blended_technical_score", 0),
+
             "Board Method": "Profile-aware board (95% description / 5% title)",
-            "Board Overview Score": result["board_avg"],
-            "Board Avg": result["board_avg"],
-            "Final Score": result["final_score"],
+            "Board Overview Score": result.get("board_avg", 0),
+            "Board Avg": result.get("board_avg", 0),
+            "Final Score": result.get("final_score", 0),
+
             "Recommendation": rec,
             "Priority": prio,
             "Verified Active": verified_active,
             "Excluded": excluded,
             "Status": "Open" if verified_active and not excluded else "Excluded",
-            "Board Scores": result["board_scores"],
+            "Board Scores": result.get("board_scores", {}),
             "Board Feedback": {},
         }
 
@@ -194,15 +237,18 @@ if result:
         st.success("Job saved successfully.")
         st.session_state.analysis_result = None
 
+# =========================
+# DASHBOARD METRICS
+# =========================
 st.divider()
 st.subheader("Dashboard Metrics")
 
 jobs = st.session_state.jobs
 total_jobs = len(jobs)
-apply_now = sum(1 for j in jobs if j["Recommendation"] == "Apply Now")
-consider_count = sum(1 for j in jobs if j["Recommendation"] == "Consider")
-skip_count = sum(1 for j in jobs if j["Recommendation"] == "Skip")
-avg_final_score = round(sum(j["Final Score"] for j in jobs) / total_jobs, 2) if total_jobs else 0.0
+apply_now = sum(1 for j in jobs if j.get("Recommendation") == "Apply Now")
+consider_count = sum(1 for j in jobs if j.get("Recommendation") == "Consider")
+skip_count = sum(1 for j in jobs if j.get("Recommendation") == "Skip")
+avg_final_score = round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 avg_board = round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 
 m1, m2, m3, m4, m5, m6 = st.columns(6)
@@ -213,6 +259,9 @@ m4.metric("Skip", skip_count)
 m5.metric("Avg Final Score", avg_final_score)
 m6.metric("Avg Board Overview", avg_board)
 
+# =========================
+# TABLE
+# =========================
 st.divider()
 st.subheader("Jobs Table")
 
@@ -236,11 +285,20 @@ else:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        rec_filter = st.selectbox("Filter by Recommendation", ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist()))
+        rec_filter = st.selectbox(
+            "Filter by Recommendation",
+            ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist())
+        )
     with c2:
-        country_filter = st.selectbox("Filter by Country", ["All"] + sorted(display_df["Country"].dropna().unique().tolist()))
+        country_filter = st.selectbox(
+            "Filter by Country",
+            ["All"] + sorted(display_df["Country"].dropna().unique().tolist())
+        )
     with c3:
-        status_filter = st.selectbox("Filter by Status", ["All"] + sorted(display_df["Status"].dropna().unique().tolist()))
+        status_filter = st.selectbox(
+            "Filter by Status",
+            ["All"] + sorted(display_df["Status"].dropna().unique().tolist())
+        )
 
     filtered = display_df.copy()
     if rec_filter != "All":
@@ -254,7 +312,10 @@ else:
 
     st.markdown("### Detailed Board Analysis")
     for i, job in enumerate(jobs, start=1):
-        header = f"{i}. {job['Company']} - {job['Position']} | Board: {job.get('Board Avg', 0)} | Final: {job['Final Score']}"
+        header = (
+            f"{i}. {job.get('Company', '')} - {job.get('Position', '')} "
+            f"| Board: {job.get('Board Avg', 0)} | Final: {job.get('Final Score', 0)}"
+        )
         with st.expander(header):
             st.write("**Job Description**")
             st.write(job.get("Job Description", ""))
