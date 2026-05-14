@@ -34,8 +34,7 @@ BOARD_KEYWORDS = {
     "HR Director": [
         "leadership", "management", "communication", "stakeholder",
         "cross-functional", "team", "international", "culture",
-        "leadership", "communication", "parties prenantes",
-        "transverse", "equipe", "international", "culture"
+        "parties prenantes", "transverse", "equipe"
     ],
     "CFO": [
         "strategic", "capital structure", "funding", "refinancing",
@@ -46,31 +45,26 @@ BOARD_KEYWORDS = {
     "Head of Treasury": [
         "treasury", "cash management", "liquidity", "funding", "hedging",
         "fx", "interest rate", "tms", "treasury transformation",
-        "tresorerie", "gestion de tresorerie", "liquidite", "financement",
-        "couverture", "taux d'interet", "transformation tresorerie"
+        "tresorerie", "gestion de tresorerie", "couverture", "transformation tresorerie"
     ],
     "Hiring Manager": [
         "execution", "delivery", "ownership", "implementation",
         "problem solving", "hands-on", "operations",
-        "execution", "livraison", "responsabilite", "mise en oeuvre",
-        "resolution de problemes", "operationnel"
+        "livraison", "responsabilite", "mise en oeuvre", "operationnel"
     ],
     "FP&A Manager": [
         "forecast", "budget", "scenario", "analysis", "kpi",
         "financial modelling", "variance", "planning", "reporting",
-        "prevision", "budget", "scenario", "analyse", "kpi",
-        "modelisation financiere", "ecarts", "planification", "reporting"
+        "prevision", "modelisation financiere", "ecarts", "planification"
     ],
     "Financial Risk Manager": [
         "risk", "derivatives", "fx", "interest rate", "hedging",
         "exposure", "sensitivity", "var", "stress testing",
-        "risque", "derives", "change", "taux", "couverture",
-        "exposition", "sensibilite", "stress test"
+        "risque", "derives", "change", "taux", "sensibilite", "stress test"
     ],
     "Project Finance Director": [
         "project finance", "infrastructure", "dscr", "irr", "cfads",
         "debt sizing", "bankability", "refinancing", "long-term financing",
-        "financement de projet", "infrastructure", "dscr", "tri", "cfads",
-        "dimensionnement de la dette", "bancabilite", "refinancement", "financement long terme"
+        "financement de projet", "tri", "dimensionnement de la dette", "bancabilite", "financement long terme"
     ],
 }
