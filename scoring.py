@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 from knowledge import BOARD_MEMBERS, BOARD_KEYWORDS
 from candidate_profile import CANDIDATE_PROFILE
@@ -8,22 +9,31 @@ def clamp(value):
     return max(0.0, min(100.0, float(value)))
 
 
+def strip_accents(text):
+    text = text or ""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", text)
+        if unicodedata.category(c) != "Mn"
+    )
+
+
 def normalize(text):
-    return re.sub(r"\s+", " ", (text or "").lower()).strip()
+    text = strip_accents(text)
+    return re.sub(r"\s+", " ", text.lower()).strip()
 
 
 def keyword_hit_score(text, keywords):
     txt = normalize(text)
     if not keywords:
         return 0.0
-    hits = sum(1 for kw in keywords if kw.lower() in txt)
+    hits = sum(1 for kw in keywords if normalize(kw) in txt)
     return clamp((hits / len(keywords)) * 100)
 
 
 def exclusion_detected(title, description):
     txt = normalize(f"{title} {description}")
     for kw in CANDIDATE_PROFILE["excluded_role_keywords"]:
-        if kw.lower() in txt:
+        if normalize(kw) in txt:
             return True
     return False
 
@@ -34,11 +44,11 @@ def title_fit_score(title):
     highest = CANDIDATE_PROFILE["highest_fit_roles"]
     secondary = CANDIDATE_PROFILE["secondary_fit_roles"]
 
-    if any(r.lower() in t for r in highest):
+    if any(normalize(r) in t for r in highest):
         return 95.0
-    if any(r.lower() in t for r in secondary):
+    if any(normalize(r) in t for r in secondary):
         return 80.0
-    if "treasury" in t or "project finance" in t or "funding" in t or "liquidity" in t:
+    if any(x in t for x in ["treasury", "tresorerie", "project finance", "financement de projet", "funding", "financement", "liquidity", "liquidite"]):
         return 70.0
     return 45.0
 
@@ -47,11 +57,11 @@ def location_fit_score(country):
     c = normalize(country)
     targets = [normalize(x) for x in CANDIDATE_PROFILE["target_geographies"]]
     if c in targets:
-        if c in ["france", "portugal", "switzerland"]:
+        if c in ["france", "portugal", "switzerland", "suisse"]:
             return 100.0
-        if c == "remote europe":
+        if c in ["remote europe", "europe remote", "teletravail europe", "remote"]:
             return 95.0
-        if c == "brazil":
+        if c == "brazil" or c == "bresil":
             return 90.0
         if c == "luxembourg":
             return 85.0
