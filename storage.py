@@ -51,7 +51,6 @@ def init_db():
 def save_job(job: Dict[str, Any]):
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute(
         """
         INSERT INTO jobs (
@@ -89,7 +88,6 @@ def save_job(job: Dict[str, Any]):
             json.dumps(job.get("Board Feedback", {}), ensure_ascii=False),
         ),
     )
-
     conn.commit()
     conn.close()
 
@@ -122,6 +120,7 @@ def load_jobs() -> List[Dict[str, Any]]:
                 "Location Fit": r["location_fit"],
                 "Weighted Technical Score": r["weighted_technical_score"],
                 "Board Method": r["board_method"],
+                "Board Overview Score": r["board_avg"],
                 "Board Avg": r["board_avg"],
                 "Final Score": r["final_score"],
                 "Recommendation": r["recommendation"],
