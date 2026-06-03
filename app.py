@@ -322,7 +322,11 @@ skip_count = sum(1 for j in jobs if j.get("Recommendation") == "Skip")
 open_count = sum(1 for j in jobs if j.get("Status") == "Open")
 applied_count = sum(1 for j in jobs if j.get("Status") == "Applied")
 interview_count = sum(1 for j in jobs if j.get("Status") in ["Interview", "Final Round"])
-follow_up_due = sum(1 for j in jobs if j.get("Follow-up Date") and j.get("Status") not in ["Rejected", "Closed", "Excluded"])
+follow_up_due = sum(
+    1
+    for j in jobs
+    if j.get("Follow-up Date") and j.get("Status") not in ["Rejected", "Closed", "Excluded"]
+)
 avg_final_score = round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 avg_board = round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 
@@ -465,9 +469,19 @@ else:
                         step=1,
                         key=f"interview_count_{job.get('id')}",
                     )
+
+                    raw_follow_up_date = job.get("Follow-up Date")
+                    if raw_follow_up_date:
+                        try:
+                            default_follow_up_date = date.fromisoformat(raw_follow_up_date)
+                        except ValueError:
+                            default_follow_up_date = date.today()
+                    else:
+                        default_follow_up_date = date.today()
+
                     updated_follow_up_date = st.date_input(
                         "Follow-up date",
-                        value=date.fromisoformat(job.get("Follow-up Date")) if job.get("Follow-up Date") else date.today(),
+                        value=default_follow_up_date,
                         key=f"follow_up_date_{job.get('id')}",
                     )
                     no_follow_up_date = st.checkbox(
@@ -494,7 +508,10 @@ else:
                     "Interview history: dates and people met",
                     value=job.get("Interview History", ""),
                     height=140,
-                    placeholder="Example: 2026-06-03 — HR — discussed mobility, salary, timeline.\n2026-06-10 — Hiring Manager — discussed liquidity forecasting and hedging.",
+                    placeholder=(
+                        "Example: 2026-06-03 — HR — discussed mobility, salary, timeline.\n"
+                        "2026-06-10 — Hiring Manager — discussed liquidity forecasting and hedging."
+                    ),
                     key=f"interview_history_{job.get('id')}",
                 )
 
