@@ -11,6 +11,7 @@ def get_conn():
 def safe_json_loads(value, fallback):
     if not value:
         return fallback
+
     try:
         return json.loads(value)
     except json.JSONDecodeError:
@@ -46,6 +47,7 @@ def normalize_interviews(interviews):
 
 def compile_interview_notes(interviews):
     compiled = []
+
     for interview in normalize_interviews(interviews):
         number = interview.get("number", "")
         date_value = interview.get("date", "")
@@ -53,14 +55,18 @@ def compile_interview_notes(interviews):
         notes = interview.get("notes", "")
 
         title_parts = [f"Interview #{number}"]
+
         if date_value:
             title_parts.append(date_value)
+
         if interviewer:
             title_parts.append(interviewer)
 
         compiled.append(" — ".join(title_parts))
+
         if notes:
             compiled.append(notes)
+
         compiled.append("")
 
     return "\n".join(compiled).strip()
@@ -116,6 +122,7 @@ def init_db():
     def add_column_if_missing(column_name, column_type):
         cur.execute("PRAGMA table_info(jobs)")
         existing = [row[1] for row in cur.fetchall()]
+
         if column_name not in existing:
             cur.execute(f"ALTER TABLE jobs ADD COLUMN {column_name} {column_type}")
 
@@ -123,6 +130,7 @@ def init_db():
     add_column_if_missing("source", "TEXT")
     add_column_if_missing("application_link", "TEXT")
     add_column_if_missing("job_description", "TEXT")
+
     add_column_if_missing("interviews_json", "TEXT")
     add_column_if_missing("interview_notes", "TEXT")
     add_column_if_missing("interview_count", "INTEGER DEFAULT 0")
@@ -130,6 +138,7 @@ def init_db():
     add_column_if_missing("next_step", "TEXT")
     add_column_if_missing("follow_up_date", "TEXT")
     add_column_if_missing("follow_up_message", "TEXT")
+
     add_column_if_missing("treasury_hedging", "REAL")
     add_column_if_missing("project_finance", "REAL")
     add_column_if_missing("debt_funding", "REAL")
@@ -139,15 +148,18 @@ def init_db():
     add_column_if_missing("weighted_technical_score", "REAL")
     add_column_if_missing("auto_technical_score", "REAL")
     add_column_if_missing("manual_technical_score", "REAL")
+
     add_column_if_missing("board_method", "TEXT")
     add_column_if_missing("board_avg", "REAL")
     add_column_if_missing("final_score", "REAL")
     add_column_if_missing("recommendation", "TEXT")
     add_column_if_missing("priority", "TEXT")
+
     add_column_if_missing("verified_active", "INTEGER")
     add_column_if_missing("excluded", "INTEGER")
     add_column_if_missing("excluded_reason", "TEXT")
     add_column_if_missing("status", "TEXT")
+
     add_column_if_missing("board_scores_json", "TEXT")
     add_column_if_missing("board_feedback_json", "TEXT")
     add_column_if_missing("created_at", "TEXT")
@@ -186,6 +198,7 @@ def save_job(job):
             job.get("Source", ""),
             job.get("Application Link", ""),
             job.get("Job Description", ""),
+
             json.dumps(interviews, ensure_ascii=False),
             job.get("All Notes and Feedbacks") or job.get("Interview Notes") or compiled_notes,
             len(interviews),
@@ -193,6 +206,7 @@ def save_job(job):
             job.get("Next Step", ""),
             job.get("Follow-up Date", ""),
             job.get("Follow-up Message", ""),
+
             job.get("Treasury/Hedging", 0),
             job.get("Project Finance", 0),
             job.get("Debt/Funding", 0),
@@ -202,15 +216,18 @@ def save_job(job):
             job.get("Weighted Technical Score", 0),
             job.get("Auto Technical Score", 0),
             job.get("Manual Technical Score", 0),
+
             job.get("Board Method", ""),
             job.get("Board Avg", 0),
             job.get("Final Score", 0),
             job.get("Recommendation", ""),
             job.get("Priority", ""),
+
             1 if job.get("Verified Active", False) else 0,
             1 if job.get("Excluded", False) else 0,
             job.get("Excluded Reason", ""),
             job.get("Status", ""),
+
             json.dumps(job.get("Board Scores", {}), ensure_ascii=False),
             json.dumps(job.get("Board Feedback", {}), ensure_ascii=False),
         ),
@@ -234,6 +251,7 @@ def row_to_job(r):
         "Source": r["source"],
         "Application Link": r["application_link"],
         "Job Description": r["job_description"],
+
         "Interviews": interviews,
         "Interviews JSON": json.dumps(interviews, ensure_ascii=False),
         "Interview Count": len(interviews),
@@ -243,6 +261,7 @@ def row_to_job(r):
         "Next Step": r["next_step"] if r["next_step"] else "",
         "Follow-up Date": r["follow_up_date"] if r["follow_up_date"] else "",
         "Follow-up Message": r["follow_up_message"] if r["follow_up_message"] else "",
+
         "Treasury/Hedging": r["treasury_hedging"],
         "Project Finance": r["project_finance"],
         "Debt/Funding": r["debt_funding"],
@@ -252,16 +271,19 @@ def row_to_job(r):
         "Weighted Technical Score": r["weighted_technical_score"],
         "Auto Technical Score": r["auto_technical_score"],
         "Manual Technical Score": r["manual_technical_score"],
+
         "Board Method": r["board_method"],
         "Board Overview Score": r["board_avg"],
         "Board Avg": r["board_avg"],
         "Final Score": r["final_score"],
         "Recommendation": r["recommendation"],
         "Priority": r["priority"],
+
         "Verified Active": bool(r["verified_active"]) if r["verified_active"] is not None else False,
         "Excluded": bool(r["excluded"]) if r["excluded"] is not None else False,
         "Excluded Reason": r["excluded_reason"] if r["excluded_reason"] else "",
         "Status": r["status"],
+
         "Board Scores": safe_json_loads(r["board_scores_json"], {}),
         "Board Feedback": safe_json_loads(r["board_feedback_json"], {}),
     }
@@ -271,9 +293,12 @@ def load_jobs():
     conn = get_conn()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+
     cur.execute("SELECT * FROM jobs ORDER BY id DESC")
     rows = cur.fetchall()
+
     conn.close()
+
     return [row_to_job(r) for r in rows]
 
 
@@ -281,9 +306,12 @@ def get_job_by_id(job_id):
     conn = get_conn()
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
+
     cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
     row = cur.fetchone()
+
     conn.close()
+
     return row_to_job(row) if row else None
 
 
@@ -300,6 +328,7 @@ def update_hiring_process(
 
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute(
         """
         UPDATE jobs
@@ -325,6 +354,7 @@ def update_hiring_process(
             job_id,
         ),
     )
+
     conn.commit()
     conn.close()
 
@@ -341,6 +371,7 @@ def update_job_follow_up(
 ):
     """Backward-compatible helper for older app.py versions."""
     interviews = []
+
     if interview_history or interview_notes:
         interviews = [
             {
@@ -364,6 +395,7 @@ def update_job_follow_up(
 def exists_duplicate(company, position, country):
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute(
         """
         SELECT 1 FROM jobs
@@ -374,14 +406,18 @@ def exists_duplicate(company, position, country):
         """,
         (company.strip(), position.strip(), country.strip()),
     )
+
     row = cur.fetchone()
+
     conn.close()
+
     return row is not None
 
 
 def find_duplicate_id(company, position, country):
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute(
         """
         SELECT id FROM jobs
@@ -393,15 +429,20 @@ def find_duplicate_id(company, position, country):
         """,
         (company.strip(), position.strip(), country.strip()),
     )
+
     row = cur.fetchone()
+
     conn.close()
+
     return row[0] if row else None
 
 
 def delete_job_by_id(job_id):
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+
     conn.commit()
     conn.close()
 
@@ -415,7 +456,9 @@ def clear_jobs():
     """Delete all jobs from the local SQLite database."""
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("DELETE FROM jobs")
+
     conn.commit()
     conn.close()
 
@@ -429,6 +472,7 @@ def restore_jobs_backup(jobs, replace_existing=False):
         clear_jobs()
 
     restored = 0
+
     for job in jobs:
         save_job(job)
         restored += 1
