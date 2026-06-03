@@ -17,6 +17,55 @@ def safe_json_loads(value, fallback):
         return fallback
 
 
+def normalize_interviews(interviews):
+    if not isinstance(interviews, list):
+        return []
+
+    normalized = []
+    for index, item in enumerate(interviews, start=1):
+        if not isinstance(item, dict):
+            continue
+
+        number = item.get("number") or index
+        try:
+            number = int(number)
+        except (TypeError, ValueError):
+            number = index
+
+        normalized.append(
+            {
+                "number": number,
+                "date": str(item.get("date", "") or ""),
+                "interviewer": str(item.get("interviewer", "") or ""),
+                "notes": str(item.get("notes", "") or ""),
+            }
+        )
+
+    return sorted(normalized, key=lambda x: x.get("number", 0))
+
+
+def compile_interview_notes(interviews):
+    compiled = []
+    for interview in normalize_interviews(interviews):
+        number = interview.get("number", "")
+        date_value = interview.get("date", "")
+        interviewer = interview.get("interviewer", "")
+        notes = interview.get("notes", "")
+
+        title_parts = [f"Interview #{number}"]
+        if date_value:
+            title_parts.append(date_value)
+        if interviewer:
+            title_parts.append(interviewer)
+
+        compiled.append(" — ".join(title_parts))
+        if notes:
+            compiled.append(notes)
+        compiled.append("")
+
+    return "\n".join(compiled).strip()
+
+
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
@@ -32,6 +81,7 @@ def init_db():
             source TEXT,
             application_link TEXT,
             job_description TEXT,
+            interviews_json TEXT,
             interview_notes TEXT,
             interview_count INTEGER DEFAULT 0,
             interview_history TEXT,
@@ -73,6 +123,7 @@ def init_db():
     add_column_if_missing("source", "TEXT")
     add_column_if_missing("application_link", "TEXT")
     add_column_if_missing("job_description", "TEXT")
+    add_column_if_missing("interviews_json", "TEXT")
     add_column_if_missing("interview_notes", "TEXT")
     add_column_if_missing("interview_count", "INTEGER DEFAULT 0")
     add_column_if_missing("interview_history", "TEXT")
@@ -106,6 +157,9 @@ def init_db():
 
 
 def save_job(job):
+    interviews = normalize_interviews(job.get("Interviews", []))
+    compiled_notes = compile_interview_notes(interviews)
+
     conn = get_conn()
     cur = conn.cursor()
 
@@ -113,8 +167,8 @@ def save_job(job):
         """
         INSERT INTO jobs (
             company, position, location, country, source, application_link,
-            job_description, interview_notes, interview_count, interview_history,
-            next_step, follow_up_date, follow_up_message,
+            job_description, interviews_json, interview_notes, interview_count,
+            interview_history, next_step, follow_up_date, follow_up_message,
             treasury_hedging, project_finance, debt_funding, seniority,
             tools_systems, location_fit,
             weighted_technical_score, auto_technical_score, manual_technical_score,
@@ -122,7 +176,7 @@ def save_job(job):
             verified_active, excluded, excluded_reason, status,
             board_scores_json, board_feedback_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job.get("Company", ""),
@@ -132,9 +186,10 @@ def save_job(job):
             job.get("Source", ""),
             job.get("Application Link", ""),
             job.get("Job Description", ""),
-            job.get("Interview Notes", ""),
-            int(job.get("Interview Count", 0) or 0),
-            job.get("Interview History", ""),
+            json.dumps(interviews, ensure_ascii=False),
+            job.get("All Notes and Feedbacks") or job.get("Interview Notes") or compiled_notes,
+            len(interviews),
+            job.get("Interview History") or compiled_notes,
             job.get("Next Step", ""),
             job.get("Follow-up Date", ""),
             job.get("Follow-up Message", ""),
@@ -166,6 +221,10 @@ def save_job(job):
 
 
 def row_to_job(r):
+    interviews = normalize_interviews(safe_json_loads(r["interviews_json"], []))
+    compiled_notes = compile_interview_notes(interviews)
+    stored_notes = r["interview_notes"] if r["interview_notes"] else ""
+
     return {
         "id": r["id"],
         "Company": r["company"],
@@ -175,9 +234,12 @@ def row_to_job(r):
         "Source": r["source"],
         "Application Link": r["application_link"],
         "Job Description": r["job_description"],
-        "Interview Notes": r["interview_notes"] if r["interview_notes"] else "",
-        "Interview Count": int(r["interview_count"] or 0),
-        "Interview History": r["interview_history"] if r["interview_history"] else "",
+        "Interviews": interviews,
+        "Interviews JSON": json.dumps(interviews, ensure_ascii=False),
+        "Interview Count": len(interviews),
+        "Interview History": r["interview_history"] if r["interview_history"] else compiled_notes,
+        "Interview Notes": stored_notes or compiled_notes,
+        "All Notes and Feedbacks": compiled_notes or stored_notes,
         "Next Step": r["next_step"] if r["next_step"] else "",
         "Follow-up Date": r["follow_up_date"] if r["follow_up_date"] else "",
         "Follow-up Message": r["follow_up_message"] if r["follow_up_message"] else "",
@@ -225,43 +287,78 @@ def get_job_by_id(job_id):
     return row_to_job(row) if row else None
 
 
-def update_job_follow_up(
+def update_hiring_process(
     job_id,
     status,
-    interview_count,
-    interview_history,
-    interview_notes,
     next_step,
     follow_up_date,
     follow_up_message,
+    interviews,
 ):
+    interviews = normalize_interviews(interviews)
+    compiled_notes = compile_interview_notes(interviews)
+
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
         """
         UPDATE jobs
         SET status = ?,
-            interview_count = ?,
-            interview_history = ?,
-            interview_notes = ?,
             next_step = ?,
             follow_up_date = ?,
-            follow_up_message = ?
+            follow_up_message = ?,
+            interviews_json = ?,
+            interview_count = ?,
+            interview_history = ?,
+            interview_notes = ?
         WHERE id = ?
         """,
         (
             status,
-            int(interview_count or 0),
-            interview_history,
-            interview_notes,
             next_step,
             follow_up_date,
             follow_up_message,
+            json.dumps(interviews, ensure_ascii=False),
+            len(interviews),
+            compiled_notes,
+            compiled_notes,
             job_id,
         ),
     )
     conn.commit()
     conn.close()
+
+
+def update_job_follow_up(
+    job_id,
+    status,
+    interview_count=None,
+    interview_history=None,
+    interview_notes=None,
+    next_step="",
+    follow_up_date="",
+    follow_up_message="",
+):
+    """Backward-compatible helper for older app.py versions."""
+    interviews = []
+    if interview_history or interview_notes:
+        interviews = [
+            {
+                "number": 1,
+                "date": "",
+                "interviewer": "Historical notes",
+                "notes": interview_notes or interview_history or "",
+            }
+        ]
+
+    update_hiring_process(
+        job_id=job_id,
+        status=status,
+        next_step=next_step,
+        follow_up_date=follow_up_date,
+        follow_up_message=follow_up_message,
+        interviews=interviews,
+    )
 
 
 def exists_duplicate(company, position, country):
