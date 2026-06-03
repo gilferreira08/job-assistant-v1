@@ -223,7 +223,9 @@ def delete_job_by_id(job_id):
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     conn.commit()
     conn.close()
-    def export_jobs_backup():
+
+
+def export_jobs_backup():
     """Return all saved jobs as a JSON-serializable list."""
     return load_jobs()
 
