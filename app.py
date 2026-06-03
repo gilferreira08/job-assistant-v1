@@ -33,7 +33,6 @@ init_db()
 if "jobs" not in st.session_state:
     st.session_state.jobs = load_jobs()
 
-# Backup / Restore sidebar
 st.sidebar.subheader("Backup / Restore")
 
 backup_data = export_jobs_backup()
@@ -215,6 +214,13 @@ if result is not None:
     verified_active = st.checkbox("Role verified active", value=True)
     excluded_manual = st.checkbox("Out of scope / excluded (manual override)", value=False)
 
+    interview_notes = st.text_area(
+        "Interview Notes / Feedback / Next Step",
+        value=result.get("interview_notes", ""),
+        height=180,
+        help="Open text field for interview prep, feedback, objections, and next actions.",
+    )
+
     # Duplicate flow
     is_dup = exists_duplicate(result["company"], result["position"], result["country"])
     duplicate_action = "Discard new"
@@ -282,6 +288,7 @@ if result is not None:
             "Excluded": excluded,
             "Excluded Reason": excluded_reason,
             "Status": "Open" if verified_active and not excluded else "Excluded",
+            "Interview Notes": interview_notes,
             "Board Scores": result.get("board_scores", {}),
             "Board Feedback": {},
         }
@@ -324,12 +331,15 @@ else:
         df["Manual Technical Score"] = None
     if "Excluded Reason" not in df.columns:
         df["Excluded Reason"] = ""
+    if "Interview Notes" not in df.columns:
+        df["Interview Notes"] = ""
 
     display_cols = [
         "Company", "Position", "Country", "Source",
         "Auto Technical Score", "Manual Technical Score", "Weighted Technical Score",
         "Board Overview Score", "Final Score",
-        "Recommendation", "Priority", "Status", "Excluded", "Excluded Reason"
+        "Recommendation", "Priority", "Status", "Excluded", "Excluded Reason",
+        "Interview Notes"
     ]
     display_df = df[display_cols].copy()
 
@@ -370,6 +380,9 @@ else:
             st.write("**Exclusion**")
             st.write(f"- Excluded: {job.get('Excluded', False)}")
             st.write(f"- Excluded Reason: {job.get('Excluded Reason', '') or 'None'}")
+
+            st.write("**Interview Notes / Feedback / Next Step**")
+            st.write(job.get("Interview Notes", "") or "No interview notes yet.")
 
             st.write("**Board Scores**")
             st.json(job.get("Board Scores", {}))
