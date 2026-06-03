@@ -21,6 +21,8 @@ from storage import (
     exists_duplicate,
     find_duplicate_id,
     delete_job_by_id,
+    export_jobs_backup,
+    restore_jobs_backup,
 )
 
 st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
@@ -30,6 +32,40 @@ st.caption("Paste job info (EN or FR), then click Run Analysis.")
 init_db()
 if "jobs" not in st.session_state:
     st.session_state.jobs = load_jobs()
+
+# Backup / Restore sidebar
+st.sidebar.subheader("Backup / Restore")
+
+backup_data = export_jobs_backup()
+backup_json = json.dumps(backup_data, ensure_ascii=False, indent=2)
+backup_filename = f"job_assistant_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+
+st.sidebar.download_button(
+    label="Download backup",
+    data=backup_json,
+    file_name=backup_filename,
+    mime="application/json",
+)
+
+uploaded_backup = st.sidebar.file_uploader(
+    "Restore backup JSON",
+    type=["json"],
+)
+
+replace_existing = st.sidebar.checkbox(
+    "Replace existing jobs during restore",
+    value=False,
+)
+
+if uploaded_backup is not None:
+    if st.sidebar.button("Restore backup"):
+        restored_jobs = json.load(uploaded_backup)
+        restored_count = restore_jobs_backup(
+            restored_jobs,
+            replace_existing=replace_existing,
+        )
+        st.session_state.jobs = load_jobs()
+        st.sidebar.success(f"Restored {restored_count} jobs from backup.")
 
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
