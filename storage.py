@@ -11,7 +11,6 @@ def get_conn():
 def safe_json_loads(value, fallback):
     if not value:
         return fallback
-
     try:
         return json.loads(value)
     except json.JSONDecodeError:
@@ -34,6 +33,11 @@ def init_db():
             application_link TEXT,
             job_description TEXT,
             interview_notes TEXT,
+            interview_count INTEGER DEFAULT 0,
+            interview_history TEXT,
+            next_step TEXT,
+            follow_up_date TEXT,
+            follow_up_message TEXT,
             treasury_hedging REAL,
             project_finance REAL,
             debt_funding REAL,
@@ -70,6 +74,11 @@ def init_db():
     add_column_if_missing("application_link", "TEXT")
     add_column_if_missing("job_description", "TEXT")
     add_column_if_missing("interview_notes", "TEXT")
+    add_column_if_missing("interview_count", "INTEGER DEFAULT 0")
+    add_column_if_missing("interview_history", "TEXT")
+    add_column_if_missing("next_step", "TEXT")
+    add_column_if_missing("follow_up_date", "TEXT")
+    add_column_if_missing("follow_up_message", "TEXT")
     add_column_if_missing("treasury_hedging", "REAL")
     add_column_if_missing("project_finance", "REAL")
     add_column_if_missing("debt_funding", "REAL")
@@ -104,7 +113,8 @@ def save_job(job):
         """
         INSERT INTO jobs (
             company, position, location, country, source, application_link,
-            job_description, interview_notes,
+            job_description, interview_notes, interview_count, interview_history,
+            next_step, follow_up_date, follow_up_message,
             treasury_hedging, project_finance, debt_funding, seniority,
             tools_systems, location_fit,
             weighted_technical_score, auto_technical_score, manual_technical_score,
@@ -112,7 +122,7 @@ def save_job(job):
             verified_active, excluded, excluded_reason, status,
             board_scores_json, board_feedback_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job.get("Company", ""),
@@ -123,6 +133,11 @@ def save_job(job):
             job.get("Application Link", ""),
             job.get("Job Description", ""),
             job.get("Interview Notes", ""),
+            int(job.get("Interview Count", 0) or 0),
+            job.get("Interview History", ""),
+            job.get("Next Step", ""),
+            job.get("Follow-up Date", ""),
+            job.get("Follow-up Message", ""),
             job.get("Treasury/Hedging", 0),
             job.get("Project Finance", 0),
             job.get("Debt/Funding", 0),
@@ -150,6 +165,46 @@ def save_job(job):
     conn.close()
 
 
+def row_to_job(r):
+    return {
+        "id": r["id"],
+        "Company": r["company"],
+        "Position": r["position"],
+        "Location": r["location"],
+        "Country": r["country"],
+        "Source": r["source"],
+        "Application Link": r["application_link"],
+        "Job Description": r["job_description"],
+        "Interview Notes": r["interview_notes"] if r["interview_notes"] else "",
+        "Interview Count": int(r["interview_count"] or 0),
+        "Interview History": r["interview_history"] if r["interview_history"] else "",
+        "Next Step": r["next_step"] if r["next_step"] else "",
+        "Follow-up Date": r["follow_up_date"] if r["follow_up_date"] else "",
+        "Follow-up Message": r["follow_up_message"] if r["follow_up_message"] else "",
+        "Treasury/Hedging": r["treasury_hedging"],
+        "Project Finance": r["project_finance"],
+        "Debt/Funding": r["debt_funding"],
+        "Seniority": r["seniority"],
+        "Tools/Systems": r["tools_systems"],
+        "Location Fit": r["location_fit"],
+        "Weighted Technical Score": r["weighted_technical_score"],
+        "Auto Technical Score": r["auto_technical_score"],
+        "Manual Technical Score": r["manual_technical_score"],
+        "Board Method": r["board_method"],
+        "Board Overview Score": r["board_avg"],
+        "Board Avg": r["board_avg"],
+        "Final Score": r["final_score"],
+        "Recommendation": r["recommendation"],
+        "Priority": r["priority"],
+        "Verified Active": bool(r["verified_active"]) if r["verified_active"] is not None else False,
+        "Excluded": bool(r["excluded"]) if r["excluded"] is not None else False,
+        "Excluded Reason": r["excluded_reason"] if r["excluded_reason"] else "",
+        "Status": r["status"],
+        "Board Scores": safe_json_loads(r["board_scores_json"], {}),
+        "Board Feedback": safe_json_loads(r["board_feedback_json"], {}),
+    }
+
+
 def load_jobs():
     conn = get_conn()
     conn.row_factory = sqlite3.Row
@@ -157,45 +212,56 @@ def load_jobs():
     cur.execute("SELECT * FROM jobs ORDER BY id DESC")
     rows = cur.fetchall()
     conn.close()
+    return [row_to_job(r) for r in rows]
 
-    jobs = []
-    for r in rows:
-        jobs.append(
-            {
-                "id": r["id"],
-                "Company": r["company"],
-                "Position": r["position"],
-                "Location": r["location"],
-                "Country": r["country"],
-                "Source": r["source"],
-                "Application Link": r["application_link"],
-                "Job Description": r["job_description"],
-                "Interview Notes": r["interview_notes"] if r["interview_notes"] else "",
-                "Treasury/Hedging": r["treasury_hedging"],
-                "Project Finance": r["project_finance"],
-                "Debt/Funding": r["debt_funding"],
-                "Seniority": r["seniority"],
-                "Tools/Systems": r["tools_systems"],
-                "Location Fit": r["location_fit"],
-                "Weighted Technical Score": r["weighted_technical_score"],
-                "Auto Technical Score": r["auto_technical_score"],
-                "Manual Technical Score": r["manual_technical_score"],
-                "Board Method": r["board_method"],
-                "Board Overview Score": r["board_avg"],
-                "Board Avg": r["board_avg"],
-                "Final Score": r["final_score"],
-                "Recommendation": r["recommendation"],
-                "Priority": r["priority"],
-                "Verified Active": bool(r["verified_active"]) if r["verified_active"] is not None else False,
-                "Excluded": bool(r["excluded"]) if r["excluded"] is not None else False,
-                "Excluded Reason": r["excluded_reason"] if r["excluded_reason"] else "",
-                "Status": r["status"],
-                "Board Scores": safe_json_loads(r["board_scores_json"], {}),
-                "Board Feedback": safe_json_loads(r["board_feedback_json"], {}),
-            }
-        )
 
-    return jobs
+def get_job_by_id(job_id):
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row_to_job(row) if row else None
+
+
+def update_job_follow_up(
+    job_id,
+    status,
+    interview_count,
+    interview_history,
+    interview_notes,
+    next_step,
+    follow_up_date,
+    follow_up_message,
+):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        UPDATE jobs
+        SET status = ?,
+            interview_count = ?,
+            interview_history = ?,
+            interview_notes = ?,
+            next_step = ?,
+            follow_up_date = ?,
+            follow_up_message = ?
+        WHERE id = ?
+        """,
+        (
+            status,
+            int(interview_count or 0),
+            interview_history,
+            interview_notes,
+            next_step,
+            follow_up_date,
+            follow_up_message,
+            job_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
 
 
 def exists_duplicate(company, position, country):
