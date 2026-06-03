@@ -1,4 +1,3 @@
-
 import json
 from datetime import date, datetime
 
@@ -43,24 +42,13 @@ APP_STATUSES = [
     "Excluded",
 ]
 
-st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
-st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
-st.caption("Paste job info (EN or FR), then click Run Analysis.")
-
-init_db()
-
-if "jobs" not in st.session_state:
-    st.session_state.jobs = load_jobs()
-
-if "analysis_result" not in st.session_state:
-    st.session_state.analysis_result = None
-
 
 def normalize_interviews_for_app(interviews):
     if not isinstance(interviews, list):
         return []
 
     normalized = []
+
     for index, item in enumerate(interviews, start=1):
         if not isinstance(item, dict):
             continue
@@ -82,23 +70,6 @@ def normalize_interviews_for_app(interviews):
     return sorted(normalized, key=lambda x: x.get("number", 0))
 
 
-def compile_notes_for_app(interviews):
-    compiled = []
-    for interview in normalize_interviews_for_app(interviews):
-        title = f"Interview #{interview.get('number', '')}"
-        if interview.get("date"):
-            title += f" — {interview.get('date')}"
-        if interview.get("interviewer"):
-            title += f" — {interview.get('interviewer')}"
-
-        compiled.append(title)
-        if interview.get("notes"):
-            compiled.append(interview.get("notes"))
-        compiled.append("")
-
-    return "\n".join(compiled).strip()
-
-
 def safe_date_from_string(value):
     if not value:
         return date.today()
@@ -107,6 +78,19 @@ def safe_date_from_string(value):
         return date.fromisoformat(value)
     except ValueError:
         return date.today()
+
+
+st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
+st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
+st.caption("Paste job info (EN or FR), then click Run Analysis.")
+
+init_db()
+
+if "jobs" not in st.session_state:
+    st.session_state.jobs = load_jobs()
+
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = None
 
 
 # -----------------------------------------------------------------------------
@@ -131,7 +115,10 @@ replace_existing = st.sidebar.checkbox("Replace existing jobs during restore", v
 if restore_file is not None:
     if st.sidebar.button("Restore backup"):
         restored_jobs = json.load(restore_file)
-        restored_count = restore_jobs_backup(restored_jobs, replace_existing=replace_existing)
+        restored_count = restore_jobs_backup(
+            restored_jobs,
+            replace_existing=replace_existing,
+        )
         st.session_state.jobs = load_jobs()
         st.sidebar.success(f"Restored {restored_count} jobs.")
         st.rerun()
@@ -157,7 +144,8 @@ with st.form("job_form"):
     with col2:
         st.markdown("### Automatic Analysis")
         st.info(
-            "Manual technical sliders were removed. The technical score is now generated from the job description."
+            "Manual technical sliders were removed. "
+            "The technical score is now generated from the job description."
         )
         st.write("The app will automatically estimate:")
         st.write("- Treasury / Hedging fit")
@@ -189,14 +177,17 @@ if run_analysis:
     technical_score = round(float(auto_tech.get("weighted_technical_score", 0)), 2)
 
     board_scores, board_avg = compute_board_scores(position, job_description, country)
+
     if not isinstance(board_scores, dict):
         board_scores = {}
+
     if board_avg is None:
         board_avg = 0.0
 
     f_score = final_score(technical_score, board_avg)
     auto_excluded = exclusion_detected(position, job_description)
     auto_excl_reason = exclusion_reason(position, job_description)
+
     preview_recommendation = recommendation(
         f_score,
         verified_active=True,
@@ -243,10 +234,12 @@ if result is not None:
 
     st.markdown("### Automatic Technical Breakdown")
     auto = result.get("auto_scores", {})
+
     a1, a2, a3 = st.columns(3)
     a1.metric("Treasury / Hedging", auto.get("treasury_hedging", 0))
     a2.metric("Project Finance", auto.get("project_finance", 0))
     a3.metric("Debt / Funding", auto.get("debt_funding", 0))
+
     a4, a5, a6 = st.columns(3)
     a4.metric("Seniority", auto.get("seniority", 0))
     a5.metric("Tools / Systems", auto.get("tools_systems", 0))
@@ -288,7 +281,11 @@ if result is not None:
         )
 
     if st.button("Save Job"):
-        existing_id = find_duplicate_id(result["company"], result["position"], result["country"])
+        existing_id = find_duplicate_id(
+            result["company"],
+            result["position"],
+            result["country"],
+        )
 
         if existing_id and duplicate_action == "Discard new":
             st.info("New record discarded (duplicate policy).")
@@ -326,30 +323,36 @@ if result is not None:
             "Source": result.get("source", "").strip(),
             "Application Link": result.get("application_link", "").strip(),
             "Job Description": result.get("job_description", "").strip(),
+
             "Interviews": [],
             "All Notes and Feedbacks": "",
             "Next Step": "",
             "Follow-up Date": "",
             "Follow-up Message": "",
+
             "Treasury/Hedging": result.get("auto_scores", {}).get("treasury_hedging", 0),
             "Project Finance": result.get("auto_scores", {}).get("project_finance", 0),
             "Debt/Funding": result.get("auto_scores", {}).get("debt_funding", 0),
             "Seniority": result.get("auto_scores", {}).get("seniority", 0),
             "Tools/Systems": result.get("auto_scores", {}).get("tools_systems", 0),
             "Location Fit": result.get("auto_scores", {}).get("location_fit", 0),
+
             "Auto Technical Score": result.get("technical_score", 0),
             "Manual Technical Score": None,
             "Weighted Technical Score": result.get("technical_score", 0),
+
             "Board Method": "Profile-aware board (95% description / 5% title)",
             "Board Overview Score": result.get("board_avg", 0),
             "Board Avg": result.get("board_avg", 0),
             "Final Score": result.get("final_score", 0),
             "Recommendation": rec,
             "Priority": prio,
+
             "Verified Active": verified_active,
             "Excluded": excluded,
             "Excluded Reason": excluded_reason,
             "Status": status,
+
             "Board Scores": result.get("board_scores", {}),
             "Board Feedback": {},
         }
@@ -369,19 +372,32 @@ st.subheader("Dashboard Metrics")
 
 jobs = st.session_state.jobs
 total_jobs = len(jobs)
+
 apply_now = sum(1 for j in jobs if j.get("Recommendation") == "Apply Now")
 consider_count = sum(1 for j in jobs if j.get("Recommendation") == "Consider")
 skip_count = sum(1 for j in jobs if j.get("Recommendation") == "Skip")
 open_count = sum(1 for j in jobs if j.get("Status") == "Open")
 applied_count = sum(1 for j in jobs if j.get("Status") == "Applied")
-interview_process_count = sum(1 for j in jobs if j.get("Status") in ["Interview", "Final Round"])
+interview_process_count = sum(
+    1 for j in jobs if j.get("Status") in ["Interview", "Final Round"]
+)
 follow_up_due = sum(
     1
     for j in jobs
-    if j.get("Follow-up Date") and j.get("Status") not in ["Rejected", "Closed", "Excluded"]
+    if j.get("Follow-up Date")
+    and j.get("Status") not in ["Rejected", "Closed", "Excluded"]
 )
-avg_final_score = round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
-avg_board = round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
+
+avg_final_score = (
+    round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2)
+    if total_jobs
+    else 0.0
+)
+avg_board = (
+    round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2)
+    if total_jobs
+    else 0.0
+)
 
 m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
 m1.metric("Total Jobs", total_jobs)
@@ -408,22 +424,22 @@ else:
     df = pd.DataFrame(jobs)
 
     required_columns = {
+        "Company": "",
+        "Position": "",
+        "Country": "",
+        "Source": "",
+        "Status": "",
+        "Interview Count": 0,
+        "Next Step": "",
+        "Follow-up Date": "",
         "Auto Technical Score": None,
         "Weighted Technical Score": None,
         "Board Overview Score": None,
         "Final Score": None,
         "Recommendation": "",
         "Priority": "",
-        "Status": "",
         "Excluded": False,
         "Excluded Reason": "",
-        "Interview Count": 0,
-        "All Notes and Feedbacks": "",
-        "Next Step": "",
-        "Follow-up Date": "",
-        "Follow-up Message": "",
-        "Country": "",
-        "Source": "",
     }
 
     for col, default in required_columns.items():
@@ -450,16 +466,19 @@ else:
     display_df = df[display_cols].copy()
 
     f1, f2, f3 = st.columns(3)
+
     with f1:
         rec_filter = st.selectbox(
             "Filter by Recommendation",
             ["All"] + sorted(display_df["Recommendation"].dropna().unique().tolist()),
         )
+
     with f2:
         country_filter = st.selectbox(
             "Filter by Country",
             ["All"] + sorted(display_df["Country"].dropna().unique().tolist()),
         )
+
     with f3:
         status_filter = st.selectbox(
             "Filter by Status",
@@ -467,25 +486,29 @@ else:
         )
 
     filtered = display_df.copy()
+
     if rec_filter != "All":
         filtered = filtered[filtered["Recommendation"] == rec_filter]
+
     if country_filter != "All":
         filtered = filtered[filtered["Country"] == country_filter]
+
     if status_filter != "All":
         filtered = filtered[filtered["Status"] == status_filter]
 
     st.dataframe(filtered, width="stretch")
 
     st.markdown("### Detailed Board Analysis")
+
     for i, job in enumerate(jobs, start=1):
         interviews = normalize_interviews_for_app(job.get("Interviews", []))
-        compiled_notes = compile_notes_for_app(interviews)
 
         header = (
             f"{i}. {job.get('Company', '')} - {job.get('Position', '')} "
             f"| Board: {job.get('Board Avg', 0)} | Final: {job.get('Final Score', 0)} "
             f"| Status: {job.get('Status', '')} | Interviews: {len(interviews)}"
         )
+
         with st.expander(header):
             st.write("**Job Description**")
             st.write(job.get("Job Description", "") or "No job description saved.")
@@ -504,10 +527,22 @@ else:
             st.markdown("#### Hiring Process Follow-up")
 
             current_status = job.get("Status", "Open") or "Open"
-            status_index = APP_STATUSES.index(current_status) if current_status in APP_STATUSES else 0
+            status_index = (
+                APP_STATUSES.index(current_status)
+                if current_status in APP_STATUSES
+                else 0
+            )
 
-            with st.form(f"hiring_process_form_{job.get('id')}"):
+            reset_key = f"interview_form_reset_{job.get('id')}"
+
+            if reset_key not in st.session_state:
+                st.session_state[reset_key] = 0
+
+            reset_token = st.session_state[reset_key]
+
+            with st.form(f"hiring_process_form_{job.get('id')}_{reset_token}"):
                 st.markdown("##### Process Overview")
+
                 p1, p2 = st.columns(2)
 
                 with p1:
@@ -517,12 +552,15 @@ else:
                         index=status_index,
                         key=f"status_{job.get('id')}",
                     )
+
                     st.metric("Number of interviews", len(interviews))
+
                     no_follow_up_date = st.checkbox(
                         "No follow-up date yet",
                         value=False if job.get("Follow-up Date") else True,
                         key=f"no_follow_up_{job.get('id')}",
                     )
+
                     updated_follow_up_date = st.date_input(
                         "Follow-up date",
                         value=safe_date_from_string(job.get("Follow-up Date")),
@@ -536,6 +574,7 @@ else:
                         placeholder="Example: Prepare CFO interview / Send thank-you follow-up",
                         key=f"next_step_{job.get('id')}",
                     )
+
                     updated_follow_up_message = st.text_area(
                         "Follow-up message draft",
                         value=job.get("Follow-up Message", ""),
@@ -543,20 +582,16 @@ else:
                         key=f"follow_up_message_{job.get('id')}",
                     )
 
-                st.text_area(
-                    "All notes and feedbacks (auto-compiled from interviews)",
-                    value=compiled_notes,
-                    height=180,
-                    disabled=True,
-                    key=f"all_notes_{job.get('id')}",
-                )
-
+                st.markdown("---")
                 st.markdown("##### Interview Log")
+
                 if interviews:
                     for interview in interviews:
                         title = f"Interview #{interview.get('number')}"
+
                         if interview.get("date"):
                             title += f" — {interview.get('date')}"
+
                         if interview.get("interviewer"):
                             title += f" — {interview.get('interviewer')}"
 
@@ -565,7 +600,9 @@ else:
                 else:
                     st.info("No interviews recorded yet.")
 
+                st.markdown("---")
                 st.markdown("##### Add / Update Interview")
+
                 next_interview_number = len(interviews) + 1
                 i1, i2, i3 = st.columns(3)
 
@@ -576,28 +613,31 @@ else:
                         max_value=20,
                         value=next_interview_number,
                         step=1,
-                        key=f"new_interview_number_{job.get('id')}",
+                        key=f"new_interview_number_{job.get('id')}_{reset_token}",
                     )
 
                 with i2:
                     interview_date = st.date_input(
                         "Interview date",
                         value=date.today(),
-                        key=f"new_interview_date_{job.get('id')}",
+                        key=f"new_interview_date_{job.get('id')}_{reset_token}",
                     )
 
                 with i3:
                     interviewer = st.text_input(
                         "Interviewer",
                         placeholder="HR, Hiring Manager, Partner, CFO...",
-                        key=f"new_interviewer_{job.get('id')}",
+                        key=f"new_interviewer_{job.get('id')}_{reset_token}",
                     )
 
                 interview_feedback_notes = st.text_area(
                     "Feedback and Notes",
                     height=160,
-                    placeholder="Questions asked, feedback received, concerns, signals, next-step preparation...",
-                    key=f"new_interview_notes_{job.get('id')}",
+                    placeholder=(
+                        "Questions asked, feedback received, concerns, signals, "
+                        "next-step preparation..."
+                    ),
+                    key=f"new_interview_notes_{job.get('id')}_{reset_token}",
                 )
 
                 save_process = st.form_submit_button("Save Hiring Process")
@@ -614,6 +654,7 @@ else:
                     }
 
                     replaced = False
+
                     for idx, existing in enumerate(updated_interviews):
                         if int(existing.get("number", 0)) == int(interview_number):
                             updated_interviews[idx] = new_entry
@@ -623,7 +664,9 @@ else:
                     if not replaced:
                         updated_interviews.append(new_entry)
 
-                follow_up_value = "" if no_follow_up_date else updated_follow_up_date.isoformat()
+                follow_up_value = (
+                    "" if no_follow_up_date else updated_follow_up_date.isoformat()
+                )
 
                 update_hiring_process(
                     job_id=job.get("id"),
@@ -633,6 +676,8 @@ else:
                     follow_up_message=updated_follow_up_message,
                     interviews=updated_interviews,
                 )
+
                 st.session_state.jobs = load_jobs()
+                st.session_state[reset_key] += 1
                 st.success("Hiring process follow-up updated.")
                 st.rerun()
