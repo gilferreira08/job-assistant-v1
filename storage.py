@@ -41,6 +41,7 @@ def init_db():
             excluded INTEGER,
             excluded_reason TEXT,
             status TEXT,
+            interview_notes TEXT,
             board_scores_json TEXT,
             board_feedback_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -76,6 +77,7 @@ def init_db():
     add_column_if_missing("excluded", "INTEGER")
     add_column_if_missing("excluded_reason", "TEXT")
     add_column_if_missing("status", "TEXT")
+    add_column_if_missing("interview_notes", "TEXT")
     add_column_if_missing("board_scores_json", "TEXT")
     add_column_if_missing("board_feedback_json", "TEXT")
     add_column_if_missing("created_at", "TEXT")
@@ -95,9 +97,10 @@ def save_job(job):
             treasury_hedging, project_finance, debt_funding, seniority, tools_systems, location_fit,
             weighted_technical_score, auto_technical_score, manual_technical_score,
             board_method, board_avg, final_score, recommendation, priority,
-            verified_active, excluded, excluded_reason, status, board_scores_json, board_feedback_json
+            verified_active, excluded, excluded_reason, status, interview_notes,
+            board_scores_json, board_feedback_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job.get("Company", ""),
@@ -125,6 +128,7 @@ def save_job(job):
             1 if job.get("Excluded", False) else 0,
             job.get("Excluded Reason", ""),
             job.get("Status", ""),
+            job.get("Interview Notes", ""),
             json.dumps(job.get("Board Scores", {}), ensure_ascii=False),
             json.dumps(job.get("Board Feedback", {}), ensure_ascii=False),
         ),
@@ -173,6 +177,7 @@ def load_jobs():
                 "Excluded": bool(r["excluded"]) if r["excluded"] is not None else False,
                 "Excluded Reason": r["excluded_reason"] if r["excluded_reason"] else "",
                 "Status": r["status"],
+                "Interview Notes": r["interview_notes"] if r["interview_notes"] else "",
                 "Board Scores": json.loads(r["board_scores_json"] or "{}"),
                 "Board Feedback": json.loads(r["board_feedback_json"] or "{}"),
             }
@@ -225,64 +230,6 @@ def delete_job_by_id(job_id):
     conn.close()
 
 
-def export_jobs_backup():
-    """Return all saved jobs as a JSON-serializable list."""
-    return load_jobs()
-
-
-def clear_jobs():
-    """Delete all jobs from the local SQLite database."""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM jobs")
-    conn.commit()
-    conn.close()
-
-
-def restore_jobs_backup(jobs, replace_existing=False):
-    """Restore jobs from a JSON backup file.
-
-    If replace_existing=True, all current jobs are deleted first.
-    """
-    if replace_existing:
-        clear_jobs()
-
-    restored = 0
-    for job in jobs:
-        save_job(job)
-        restored += 1
-
-    
-def export_jobs_backup():
-    """Return all saved jobs as a JSON-serializable list."""
-    return load_jobs()
-
-
-def clear_jobs():
-    """Delete all jobs from the local SQLite database."""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM jobs")
-    conn.commit()
-    conn.close()
-
-
-def restore_jobs_backup(jobs, replace_existing=False):
-    """Restore jobs from a JSON backup file.
-
-    If replace_existing=True, all current jobs are deleted first.
-    """
-    if replace_existing:
-        clear_jobs()
-
-    restored = 0
-    for job in jobs:
-        save_job(job)
-        restored += 1
-
-    return restored
-
-    return restored
 def export_jobs_backup():
     """Return all saved jobs as a JSON-serializable list."""
     return load_jobs()
