@@ -1,3 +1,4 @@
+
 import json
 from datetime import date, datetime
 
@@ -23,7 +24,7 @@ from storage import (
     load_jobs,
     restore_jobs_backup,
     save_job,
-    update_job_follow_up,
+    update_hiring_process,
 )
 
 APP_STATUSES = [
@@ -53,6 +54,59 @@ if "jobs" not in st.session_state:
 
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
+
+
+def normalize_interviews_for_app(interviews):
+    if not isinstance(interviews, list):
+        return []
+
+    normalized = []
+    for index, item in enumerate(interviews, start=1):
+        if not isinstance(item, dict):
+            continue
+
+        try:
+            number = int(item.get("number") or index)
+        except (TypeError, ValueError):
+            number = index
+
+        normalized.append(
+            {
+                "number": number,
+                "date": str(item.get("date", "") or ""),
+                "interviewer": str(item.get("interviewer", "") or ""),
+                "notes": str(item.get("notes", "") or ""),
+            }
+        )
+
+    return sorted(normalized, key=lambda x: x.get("number", 0))
+
+
+def compile_notes_for_app(interviews):
+    compiled = []
+    for interview in normalize_interviews_for_app(interviews):
+        title = f"Interview #{interview.get('number', '')}"
+        if interview.get("date"):
+            title += f" — {interview.get('date')}"
+        if interview.get("interviewer"):
+            title += f" — {interview.get('interviewer')}"
+
+        compiled.append(title)
+        if interview.get("notes"):
+            compiled.append(interview.get("notes"))
+        compiled.append("")
+
+    return "\n".join(compiled).strip()
+
+
+def safe_date_from_string(value):
+    if not value:
+        return date.today()
+
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return date.today()
 
 
 # -----------------------------------------------------------------------------
@@ -272,9 +326,8 @@ if result is not None:
             "Source": result.get("source", "").strip(),
             "Application Link": result.get("application_link", "").strip(),
             "Job Description": result.get("job_description", "").strip(),
-            "Interview Notes": "",
-            "Interview Count": 0,
-            "Interview History": "",
+            "Interviews": [],
+            "All Notes and Feedbacks": "",
             "Next Step": "",
             "Follow-up Date": "",
             "Follow-up Message": "",
@@ -321,7 +374,7 @@ consider_count = sum(1 for j in jobs if j.get("Recommendation") == "Consider")
 skip_count = sum(1 for j in jobs if j.get("Recommendation") == "Skip")
 open_count = sum(1 for j in jobs if j.get("Status") == "Open")
 applied_count = sum(1 for j in jobs if j.get("Status") == "Applied")
-interview_count = sum(1 for j in jobs if j.get("Status") in ["Interview", "Final Round"])
+interview_process_count = sum(1 for j in jobs if j.get("Status") in ["Interview", "Final Round"])
 follow_up_due = sum(
     1
     for j in jobs
@@ -334,7 +387,7 @@ m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
 m1.metric("Total Jobs", total_jobs)
 m2.metric("Open", open_count)
 m3.metric("Applied", applied_count)
-m4.metric("Interviews", interview_count)
+m4.metric("Interviews", interview_process_count)
 m5.metric("Follow-ups", follow_up_due)
 m6.metric("Apply Now", apply_now)
 m7.metric("Consider", consider_count)
@@ -365,8 +418,7 @@ else:
         "Excluded": False,
         "Excluded Reason": "",
         "Interview Count": 0,
-        "Interview History": "",
-        "Interview Notes": "",
+        "All Notes and Feedbacks": "",
         "Next Step": "",
         "Follow-up Date": "",
         "Follow-up Message": "",
@@ -426,10 +478,13 @@ else:
 
     st.markdown("### Detailed Board Analysis")
     for i, job in enumerate(jobs, start=1):
+        interviews = normalize_interviews_for_app(job.get("Interviews", []))
+        compiled_notes = compile_notes_for_app(interviews)
+
         header = (
             f"{i}. {job.get('Company', '')} - {job.get('Position', '')} "
             f"| Board: {job.get('Board Avg', 0)} | Final: {job.get('Final Score', 0)} "
-            f"| Status: {job.get('Status', '')}"
+            f"| Status: {job.get('Status', '')} | Interviews: {len(interviews)}"
         )
         with st.expander(header):
             st.write("**Job Description**")
@@ -451,90 +506,132 @@ else:
             current_status = job.get("Status", "Open") or "Open"
             status_index = APP_STATUSES.index(current_status) if current_status in APP_STATUSES else 0
 
-            with st.form(f"follow_up_form_{job.get('id')}"):
-                fu1, fu2 = st.columns(2)
+            with st.form(f"hiring_process_form_{job.get('id')}"):
+                st.markdown("##### Process Overview")
+                p1, p2 = st.columns(2)
 
-                with fu1:
+                with p1:
                     updated_status = st.selectbox(
                         "Application Status",
                         APP_STATUSES,
                         index=status_index,
                         key=f"status_{job.get('id')}",
                     )
-                    updated_interview_count = st.number_input(
-                        "Number of interviews already done",
-                        min_value=0,
-                        max_value=20,
-                        value=int(job.get("Interview Count", 0) or 0),
-                        step=1,
-                        key=f"interview_count_{job.get('id')}",
-                    )
-
-                    raw_follow_up_date = job.get("Follow-up Date")
-                    if raw_follow_up_date:
-                        try:
-                            default_follow_up_date = date.fromisoformat(raw_follow_up_date)
-                        except ValueError:
-                            default_follow_up_date = date.today()
-                    else:
-                        default_follow_up_date = date.today()
-
-                    updated_follow_up_date = st.date_input(
-                        "Follow-up date",
-                        value=default_follow_up_date,
-                        key=f"follow_up_date_{job.get('id')}",
-                    )
+                    st.metric("Number of interviews", len(interviews))
                     no_follow_up_date = st.checkbox(
                         "No follow-up date yet",
                         value=False if job.get("Follow-up Date") else True,
                         key=f"no_follow_up_{job.get('id')}",
                     )
+                    updated_follow_up_date = st.date_input(
+                        "Follow-up date",
+                        value=safe_date_from_string(job.get("Follow-up Date")),
+                        key=f"follow_up_date_{job.get('id')}",
+                    )
 
-                with fu2:
+                with p2:
                     updated_next_step = st.text_input(
                         "Next step",
                         value=job.get("Next Step", ""),
-                        placeholder="Example: Send thank-you note / Prepare Head of Treasury interview",
+                        placeholder="Example: Prepare CFO interview / Send thank-you follow-up",
                         key=f"next_step_{job.get('id')}",
                     )
                     updated_follow_up_message = st.text_area(
                         "Follow-up message draft",
                         value=job.get("Follow-up Message", ""),
-                        height=120,
+                        height=140,
                         key=f"follow_up_message_{job.get('id')}",
                     )
 
-                updated_interview_history = st.text_area(
-                    "Interview history: dates and people met",
-                    value=job.get("Interview History", ""),
-                    height=140,
-                    placeholder=(
-                        "Example: 2026-06-03 — HR — discussed mobility, salary, timeline.\n"
-                        "2026-06-10 — Hiring Manager — discussed liquidity forecasting and hedging."
-                    ),
-                    key=f"interview_history_{job.get('id')}",
+                st.text_area(
+                    "All notes and feedbacks (auto-compiled from interviews)",
+                    value=compiled_notes,
+                    height=180,
+                    disabled=True,
+                    key=f"all_notes_{job.get('id')}",
                 )
 
-                updated_interview_notes = st.text_area(
-                    "Interview notes / feedback / next-step thinking",
-                    value=job.get("Interview Notes", ""),
+                st.markdown("##### Interview Log")
+                if interviews:
+                    for interview in interviews:
+                        title = f"Interview #{interview.get('number')}"
+                        if interview.get("date"):
+                            title += f" — {interview.get('date')}"
+                        if interview.get("interviewer"):
+                            title += f" — {interview.get('interviewer')}"
+
+                        st.write(f"**{title}**")
+                        st.write(interview.get("notes", "") or "No notes.")
+                else:
+                    st.info("No interviews recorded yet.")
+
+                st.markdown("##### Add / Update Interview")
+                next_interview_number = len(interviews) + 1
+                i1, i2, i3 = st.columns(3)
+
+                with i1:
+                    interview_number = st.number_input(
+                        "Interview number",
+                        min_value=1,
+                        max_value=20,
+                        value=next_interview_number,
+                        step=1,
+                        key=f"new_interview_number_{job.get('id')}",
+                    )
+
+                with i2:
+                    interview_date = st.date_input(
+                        "Interview date",
+                        value=date.today(),
+                        key=f"new_interview_date_{job.get('id')}",
+                    )
+
+                with i3:
+                    interviewer = st.text_input(
+                        "Interviewer",
+                        placeholder="HR, Hiring Manager, Partner, CFO...",
+                        key=f"new_interviewer_{job.get('id')}",
+                    )
+
+                interview_feedback_notes = st.text_area(
+                    "Feedback and Notes",
                     height=160,
-                    key=f"interview_notes_{job.get('id')}",
+                    placeholder="Questions asked, feedback received, concerns, signals, next-step preparation...",
+                    key=f"new_interview_notes_{job.get('id')}",
                 )
 
-                save_follow_up = st.form_submit_button("Save Follow-up")
+                save_process = st.form_submit_button("Save Hiring Process")
 
-            if save_follow_up:
+            if save_process:
+                updated_interviews = list(interviews)
+
+                if interviewer.strip() or interview_feedback_notes.strip():
+                    new_entry = {
+                        "number": int(interview_number),
+                        "date": interview_date.isoformat(),
+                        "interviewer": interviewer.strip(),
+                        "notes": interview_feedback_notes.strip(),
+                    }
+
+                    replaced = False
+                    for idx, existing in enumerate(updated_interviews):
+                        if int(existing.get("number", 0)) == int(interview_number):
+                            updated_interviews[idx] = new_entry
+                            replaced = True
+                            break
+
+                    if not replaced:
+                        updated_interviews.append(new_entry)
+
                 follow_up_value = "" if no_follow_up_date else updated_follow_up_date.isoformat()
-                update_job_follow_up(
+
+                update_hiring_process(
                     job_id=job.get("id"),
                     status=updated_status,
-                    interview_count=updated_interview_count,
-                    interview_history=updated_interview_history,
-                    interview_notes=updated_interview_notes,
                     next_step=updated_next_step,
                     follow_up_date=follow_up_value,
                     follow_up_message=updated_follow_up_message,
+                    interviews=updated_interviews,
                 )
                 st.session_state.jobs = load_jobs()
                 st.success("Hiring process follow-up updated.")
