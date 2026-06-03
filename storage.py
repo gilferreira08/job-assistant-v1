@@ -223,3 +223,31 @@ def delete_job_by_id(job_id):
     cur.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     conn.commit()
     conn.close()
+    def export_jobs_backup():
+    """Return all saved jobs as a JSON-serializable list."""
+    return load_jobs()
+
+
+def clear_jobs():
+    """Delete all jobs from the local SQLite database."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM jobs")
+    conn.commit()
+    conn.close()
+
+
+def restore_jobs_backup(jobs, replace_existing=False):
+    """Restore jobs from a JSON backup file.
+
+    If replace_existing=True, all current jobs are deleted first.
+    """
+    if replace_existing:
+        clear_jobs()
+
+    restored = 0
+    for job in jobs:
+        save_job(job)
+        restored += 1
+
+    return restored
