@@ -1,10 +1,9 @@
 import json
-from datetime import datetime
+from datetime import date, datetime
 
 import pandas as pd
 import streamlit as st
 
-from interview_agent import generate_interview_assessment
 from knowledge import BOARD_MEMBERS, TARGET_GEOS
 from scoring import (
     auto_technical_suggestion,
@@ -14,7 +13,6 @@ from scoring import (
     final_score,
     priority,
     recommendation,
-    weighted_technical_score,
 )
 from storage import (
     delete_job_by_id,
@@ -25,7 +23,24 @@ from storage import (
     load_jobs,
     restore_jobs_backup,
     save_job,
+    update_job_follow_up,
 )
+
+APP_STATUSES = [
+    "Open",
+    "In Preparation",
+    "Applied",
+    "Interview",
+    "Final Round",
+    "Offer",
+    "Rejected",
+    "On Hold",
+    "Closed",
+    "Link Invalid",
+    "Out of Scope",
+    "Duplicate",
+    "Excluded",
+]
 
 st.set_page_config(page_title="Treasury Job Assistant", layout="wide")
 st.title("Treasury / Project Finance Job Assistant (Lean MVP)")
@@ -38,9 +53,6 @@ if "jobs" not in st.session_state:
 
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
-
-if "gpt_interview_assessment" not in st.session_state:
-    st.session_state.gpt_interview_assessment = ""
 
 
 # -----------------------------------------------------------------------------
@@ -86,21 +98,24 @@ with st.form("job_form"):
         country = st.selectbox("Country", TARGET_GEOS)
         source = st.text_input("Source")
         application_link = st.text_input("Application Link")
-        job_description = st.text_area("Job Description (required, EN or FR)", height=220)
+        job_description = st.text_area("Job Description (required, EN or FR)", height=260)
 
     with col2:
-        treasury_hedging = st.slider("Treasury / Hedging Score (manual)", 0, 100, 70)
-        project_finance = st.slider("Project Finance Score (manual)", 0, 100, 70)
-        debt_funding = st.slider("Debt / Funding Score (manual)", 0, 100, 70)
-        seniority = st.slider("Seniority Score (manual)", 0, 100, 70)
-        tools_systems = st.slider("Tools & Systems Score (manual)", 0, 100, 70)
-        location_fit = st.slider("Location Fit Score (manual)", 0, 100, 90)
+        st.markdown("### Automatic Analysis")
+        st.info(
+            "Manual technical sliders were removed. The technical score is now generated from the job description."
+        )
+        st.write("The app will automatically estimate:")
+        st.write("- Treasury / Hedging fit")
+        st.write("- Project Finance exposure")
+        st.write("- Debt / Funding / Refinancing fit")
+        st.write("- Seniority")
+        st.write("- Tools & Systems")
+        st.write("- Location fit")
 
     run_analysis = st.form_submit_button("Run Analysis")
 
 if run_analysis:
-    st.session_state.gpt_interview_assessment = ""
-
     if not company.strip():
         st.error("Company is required.")
         st.session_state.analysis_result = None
@@ -117,18 +132,7 @@ if run_analysis:
         st.stop()
 
     auto_tech = auto_technical_suggestion(position, job_description, country)
-    manual_tech_score = weighted_technical_score(
-        treasury_hedging,
-        project_finance,
-        debt_funding,
-        seniority,
-        tools_systems,
-        location_fit,
-    )
-    blended_tech_score = round(
-        (auto_tech["weighted_technical_score"] * 0.70) + (manual_tech_score * 0.30),
-        2,
-    )
+    technical_score = round(float(auto_tech.get("weighted_technical_score", 0)), 2)
 
     board_scores, board_avg = compute_board_scores(position, job_description, country)
     if not isinstance(board_scores, dict):
@@ -136,7 +140,7 @@ if run_analysis:
     if board_avg is None:
         board_avg = 0.0
 
-    f_score = final_score(blended_tech_score, board_avg)
+    f_score = final_score(technical_score, board_avg)
     auto_excluded = exclusion_detected(position, job_description)
     auto_excl_reason = exclusion_reason(position, job_description)
     preview_recommendation = recommendation(
@@ -154,18 +158,8 @@ if run_analysis:
         "source": source,
         "application_link": application_link,
         "job_description": job_description,
-        "interview_notes": "",
-        "manual_scores": {
-            "treasury_hedging": treasury_hedging,
-            "project_finance": project_finance,
-            "debt_funding": debt_funding,
-            "seniority": seniority,
-            "tools_systems": tools_systems,
-            "location_fit": location_fit,
-            "weighted_technical_score": round(manual_tech_score, 2),
-        },
         "auto_scores": auto_tech,
-        "blended_technical_score": blended_tech_score,
+        "technical_score": technical_score,
         "board_scores": board_scores,
         "board_avg": round(float(board_avg), 2),
         "final_score": round(f_score, 2),
@@ -186,39 +180,23 @@ if result is not None:
     st.subheader("Analysis Results")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Technical Score (Blended)", f"{result.get('blended_technical_score', 0)} / 100")
+    c1.metric("Technical Score", f"{result.get('technical_score', 0)} / 100")
     c2.metric("Board Overview Score", f"{result.get('board_avg', 0)} / 100")
     c3.metric("Final Score", f"{result.get('final_score', 0)} / 100")
     c4.metric("Preview Recommendation", result.get("recommendation_preview", "N/A"))
 
-    st.caption("Technical (Blended) = 70% Auto (JD-based) + 30% Manual sliders.")
+    st.caption("Technical Score = automatic JD-based score. Manual technical inputs were removed.")
 
-    c5, c6 = st.columns(2)
-    with c5:
-        st.markdown("**Auto Technical Suggestion (from JD)**")
-        auto = result.get("auto_scores", {})
-        st.write(
-            f"- Treasury/Hedging: {auto.get('treasury_hedging', 0)}\n"
-            f"- Project Finance: {auto.get('project_finance', 0)}\n"
-            f"- Debt/Funding: {auto.get('debt_funding', 0)}\n"
-            f"- Seniority: {auto.get('seniority', 0)}\n"
-            f"- Tools/Systems: {auto.get('tools_systems', 0)}\n"
-            f"- Location Fit: {auto.get('location_fit', 0)}\n"
-            f"- Weighted Technical (Auto): {auto.get('weighted_technical_score', 0)}"
-        )
-
-    with c6:
-        st.markdown("**Manual Technical Inputs**")
-        man = result.get("manual_scores", {})
-        st.write(
-            f"- Treasury/Hedging: {man.get('treasury_hedging', 0)}\n"
-            f"- Project Finance: {man.get('project_finance', 0)}\n"
-            f"- Debt/Funding: {man.get('debt_funding', 0)}\n"
-            f"- Seniority: {man.get('seniority', 0)}\n"
-            f"- Tools/Systems: {man.get('tools_systems', 0)}\n"
-            f"- Location Fit: {man.get('location_fit', 0)}\n"
-            f"- Weighted Technical (Manual): {man.get('weighted_technical_score', 0)}"
-        )
+    st.markdown("### Automatic Technical Breakdown")
+    auto = result.get("auto_scores", {})
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Treasury / Hedging", auto.get("treasury_hedging", 0))
+    a2.metric("Project Finance", auto.get("project_finance", 0))
+    a3.metric("Debt / Funding", auto.get("debt_funding", 0))
+    a4, a5, a6 = st.columns(3)
+    a4.metric("Seniority", auto.get("seniority", 0))
+    a5.metric("Tools / Systems", auto.get("tools_systems", 0))
+    a6.metric("Location Fit", auto.get("location_fit", 0))
 
     if result.get("auto_excluded", False):
         reason_txt = result.get("auto_exclusion_reason", "automatic exclusion keyword match")
@@ -240,46 +218,6 @@ if result is not None:
             with cc2:
                 st.write(data.get("short_note", "No note available."))
                 st.caption(data.get("reason", "No detailed reason available."))
-
-    st.markdown("### Interview Notes / GPT Preparation")
-    interview_notes = st.text_area(
-        "Interview Notes / Feedback / Next Step",
-        value=result.get("interview_notes", ""),
-        height=160,
-        help="Free-form notes for interview preparation, feedback, objections, and next actions.",
-    )
-
-    if st.button("Ask GPT to assess interview notes"):
-        if not interview_notes.strip():
-            st.warning("Please write or paste interview notes first.")
-        else:
-            api_key = None
-            try:
-                api_key = st.secrets.get("OPENAI_API_KEY")
-            except Exception:
-                api_key = None
-
-            if not api_key:
-                st.warning(
-                    "Missing OPENAI_API_KEY. Add it in Streamlit secrets before using GPT assessment."
-                )
-            else:
-                with st.spinner("GPT is assessing your interview notes..."):
-                    st.session_state.gpt_interview_assessment = generate_interview_assessment(
-                        company=result.get("company", ""),
-                        position=result.get("position", ""),
-                        job_description=result.get("job_description", ""),
-                        final_score=result.get("final_score", 0),
-                        board_avg=result.get("board_avg", 0),
-                        recommendation=result.get("recommendation_preview", ""),
-                        interview_notes=interview_notes,
-                        api_key=api_key,
-                    )
-
-    if st.session_state.gpt_interview_assessment:
-        st.markdown("### GPT Interview Assessment")
-        st.write(st.session_state.gpt_interview_assessment)
-        st.caption("If useful, copy the key points into the Interview Notes field before saving.")
 
     verified_active = st.checkbox("Role verified active", value=True)
     excluded_manual = st.checkbox("Out of scope / excluded (manual override)", value=False)
@@ -324,6 +262,7 @@ if result is not None:
             excluded=excluded,
         )
         prio = priority(result.get("final_score", 0), excluded=excluded)
+        status = "Open" if verified_active and not excluded else "Excluded"
 
         new_job = {
             "Company": result.get("company", "").strip(),
@@ -333,16 +272,21 @@ if result is not None:
             "Source": result.get("source", "").strip(),
             "Application Link": result.get("application_link", "").strip(),
             "Job Description": result.get("job_description", "").strip(),
-            "Interview Notes": interview_notes,
-            "Treasury/Hedging": result.get("manual_scores", {}).get("treasury_hedging", 0),
-            "Project Finance": result.get("manual_scores", {}).get("project_finance", 0),
-            "Debt/Funding": result.get("manual_scores", {}).get("debt_funding", 0),
-            "Seniority": result.get("manual_scores", {}).get("seniority", 0),
-            "Tools/Systems": result.get("manual_scores", {}).get("tools_systems", 0),
-            "Location Fit": result.get("manual_scores", {}).get("location_fit", 0),
-            "Auto Technical Score": result.get("auto_scores", {}).get("weighted_technical_score", 0),
-            "Manual Technical Score": result.get("manual_scores", {}).get("weighted_technical_score", 0),
-            "Weighted Technical Score": result.get("blended_technical_score", 0),
+            "Interview Notes": "",
+            "Interview Count": 0,
+            "Interview History": "",
+            "Next Step": "",
+            "Follow-up Date": "",
+            "Follow-up Message": "",
+            "Treasury/Hedging": result.get("auto_scores", {}).get("treasury_hedging", 0),
+            "Project Finance": result.get("auto_scores", {}).get("project_finance", 0),
+            "Debt/Funding": result.get("auto_scores", {}).get("debt_funding", 0),
+            "Seniority": result.get("auto_scores", {}).get("seniority", 0),
+            "Tools/Systems": result.get("auto_scores", {}).get("tools_systems", 0),
+            "Location Fit": result.get("auto_scores", {}).get("location_fit", 0),
+            "Auto Technical Score": result.get("technical_score", 0),
+            "Manual Technical Score": None,
+            "Weighted Technical Score": result.get("technical_score", 0),
             "Board Method": "Profile-aware board (95% description / 5% title)",
             "Board Overview Score": result.get("board_avg", 0),
             "Board Avg": result.get("board_avg", 0),
@@ -352,7 +296,7 @@ if result is not None:
             "Verified Active": verified_active,
             "Excluded": excluded,
             "Excluded Reason": excluded_reason,
-            "Status": "Open" if verified_active and not excluded else "Excluded",
+            "Status": status,
             "Board Scores": result.get("board_scores", {}),
             "Board Feedback": {},
         }
@@ -361,7 +305,6 @@ if result is not None:
         st.session_state.jobs = load_jobs()
         st.success("Job saved successfully.")
         st.session_state.analysis_result = None
-        st.session_state.gpt_interview_assessment = ""
         st.rerun()
 
 
@@ -377,20 +320,23 @@ apply_now = sum(1 for j in jobs if j.get("Recommendation") == "Apply Now")
 consider_count = sum(1 for j in jobs if j.get("Recommendation") == "Consider")
 skip_count = sum(1 for j in jobs if j.get("Recommendation") == "Skip")
 open_count = sum(1 for j in jobs if j.get("Status") == "Open")
-interview_count = sum(1 for j in jobs if j.get("Status") == "Interview")
+applied_count = sum(1 for j in jobs if j.get("Status") == "Applied")
+interview_count = sum(1 for j in jobs if j.get("Status") in ["Interview", "Final Round"])
+follow_up_due = sum(1 for j in jobs if j.get("Follow-up Date") and j.get("Status") not in ["Rejected", "Closed", "Excluded"])
 avg_final_score = round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 avg_board = round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 
-m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
 m1.metric("Total Jobs", total_jobs)
 m2.metric("Open", open_count)
-m3.metric("Interviews", interview_count)
-m4.metric("Apply Now", apply_now)
-m5.metric("Consider", consider_count)
-m6.metric("Skip", skip_count)
-m7.metric("Avg Final", avg_final_score)
+m3.metric("Applied", applied_count)
+m4.metric("Interviews", interview_count)
+m5.metric("Follow-ups", follow_up_due)
+m6.metric("Apply Now", apply_now)
+m7.metric("Consider", consider_count)
+m8.metric("Avg Final", avg_final_score)
 
-st.caption(f"Average Board Overview: {avg_board}")
+st.caption(f"Average Board Overview: {avg_board} | Skip: {skip_count}")
 
 
 # -----------------------------------------------------------------------------
@@ -406,7 +352,6 @@ else:
 
     required_columns = {
         "Auto Technical Score": None,
-        "Manual Technical Score": None,
         "Weighted Technical Score": None,
         "Board Overview Score": None,
         "Final Score": None,
@@ -415,7 +360,12 @@ else:
         "Status": "",
         "Excluded": False,
         "Excluded Reason": "",
+        "Interview Count": 0,
+        "Interview History": "",
         "Interview Notes": "",
+        "Next Step": "",
+        "Follow-up Date": "",
+        "Follow-up Message": "",
         "Country": "",
         "Source": "",
     }
@@ -429,17 +379,16 @@ else:
         "Position",
         "Country",
         "Source",
+        "Status",
+        "Interview Count",
+        "Next Step",
+        "Follow-up Date",
         "Auto Technical Score",
-        "Manual Technical Score",
-        "Weighted Technical Score",
         "Board Overview Score",
         "Final Score",
         "Recommendation",
         "Priority",
-        "Status",
-        "Excluded",
         "Excluded Reason",
-        "Interview Notes",
     ]
 
     display_df = df[display_cols].copy()
@@ -482,13 +431,9 @@ else:
             st.write("**Job Description**")
             st.write(job.get("Job Description", "") or "No job description saved.")
 
-            st.write("**Interview Notes / Feedback / Next Step**")
-            st.write(job.get("Interview Notes", "") or "No interview notes yet.")
-
             st.write("**Technical Breakdown**")
             st.write(f"- Auto Technical: {job.get('Auto Technical Score', 'N/A')}")
-            st.write(f"- Manual Technical: {job.get('Manual Technical Score', 'N/A')}")
-            st.write(f"- Blended Technical: {job.get('Weighted Technical Score', 'N/A')}")
+            st.write(f"- Technical Score: {job.get('Weighted Technical Score', 'N/A')}")
 
             st.write("**Exclusion**")
             st.write(f"- Excluded: {job.get('Excluded', False)}")
@@ -496,3 +441,84 @@ else:
 
             st.write("**Board Scores**")
             st.json(job.get("Board Scores", {}))
+
+            st.markdown("#### Hiring Process Follow-up")
+
+            current_status = job.get("Status", "Open") or "Open"
+            status_index = APP_STATUSES.index(current_status) if current_status in APP_STATUSES else 0
+
+            with st.form(f"follow_up_form_{job.get('id')}"):
+                fu1, fu2 = st.columns(2)
+
+                with fu1:
+                    updated_status = st.selectbox(
+                        "Application Status",
+                        APP_STATUSES,
+                        index=status_index,
+                        key=f"status_{job.get('id')}",
+                    )
+                    updated_interview_count = st.number_input(
+                        "Number of interviews already done",
+                        min_value=0,
+                        max_value=20,
+                        value=int(job.get("Interview Count", 0) or 0),
+                        step=1,
+                        key=f"interview_count_{job.get('id')}",
+                    )
+                    updated_follow_up_date = st.date_input(
+                        "Follow-up date",
+                        value=date.fromisoformat(job.get("Follow-up Date")) if job.get("Follow-up Date") else date.today(),
+                        key=f"follow_up_date_{job.get('id')}",
+                    )
+                    no_follow_up_date = st.checkbox(
+                        "No follow-up date yet",
+                        value=False if job.get("Follow-up Date") else True,
+                        key=f"no_follow_up_{job.get('id')}",
+                    )
+
+                with fu2:
+                    updated_next_step = st.text_input(
+                        "Next step",
+                        value=job.get("Next Step", ""),
+                        placeholder="Example: Send thank-you note / Prepare Head of Treasury interview",
+                        key=f"next_step_{job.get('id')}",
+                    )
+                    updated_follow_up_message = st.text_area(
+                        "Follow-up message draft",
+                        value=job.get("Follow-up Message", ""),
+                        height=120,
+                        key=f"follow_up_message_{job.get('id')}",
+                    )
+
+                updated_interview_history = st.text_area(
+                    "Interview history: dates and people met",
+                    value=job.get("Interview History", ""),
+                    height=140,
+                    placeholder="Example: 2026-06-03 — HR — discussed mobility, salary, timeline.\n2026-06-10 — Hiring Manager — discussed liquidity forecasting and hedging.",
+                    key=f"interview_history_{job.get('id')}",
+                )
+
+                updated_interview_notes = st.text_area(
+                    "Interview notes / feedback / next-step thinking",
+                    value=job.get("Interview Notes", ""),
+                    height=160,
+                    key=f"interview_notes_{job.get('id')}",
+                )
+
+                save_follow_up = st.form_submit_button("Save Follow-up")
+
+            if save_follow_up:
+                follow_up_value = "" if no_follow_up_date else updated_follow_up_date.isoformat()
+                update_job_follow_up(
+                    job_id=job.get("id"),
+                    status=updated_status,
+                    interview_count=updated_interview_count,
+                    interview_history=updated_interview_history,
+                    interview_notes=updated_interview_notes,
+                    next_step=updated_next_step,
+                    follow_up_date=follow_up_value,
+                    follow_up_message=updated_follow_up_message,
+                )
+                st.session_state.jobs = load_jobs()
+                st.success("Hiring process follow-up updated.")
+                st.rerun()
