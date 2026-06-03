@@ -23,11 +23,13 @@ def normalize_interviews(interviews):
         return []
 
     normalized = []
+
     for index, item in enumerate(interviews, start=1):
         if not isinstance(item, dict):
             continue
 
         number = item.get("number") or index
+
         try:
             number = int(number)
         except (TypeError, ValueError):
@@ -213,6 +215,7 @@ def save_job(job):
             job.get("Seniority", 0),
             job.get("Tools/Systems", 0),
             job.get("Location Fit", 0),
+
             job.get("Weighted Technical Score", 0),
             job.get("Auto Technical Score", 0),
             job.get("Manual Technical Score", 0),
@@ -268,6 +271,7 @@ def row_to_job(r):
         "Seniority": r["seniority"],
         "Tools/Systems": r["tools_systems"],
         "Location Fit": r["location_fit"],
+
         "Weighted Technical Score": r["weighted_technical_score"],
         "Auto Technical Score": r["auto_technical_score"],
         "Manual Technical Score": r["manual_technical_score"],
