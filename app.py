@@ -48,7 +48,6 @@ def normalize_interviews_for_app(interviews):
         return []
 
     normalized = []
-
     for index, item in enumerate(interviews, start=1):
         if not isinstance(item, dict):
             continue
@@ -323,36 +322,30 @@ if result is not None:
             "Source": result.get("source", "").strip(),
             "Application Link": result.get("application_link", "").strip(),
             "Job Description": result.get("job_description", "").strip(),
-
             "Interviews": [],
             "All Notes and Feedbacks": "",
             "Next Step": "",
             "Follow-up Date": "",
             "Follow-up Message": "",
-
             "Treasury/Hedging": result.get("auto_scores", {}).get("treasury_hedging", 0),
             "Project Finance": result.get("auto_scores", {}).get("project_finance", 0),
             "Debt/Funding": result.get("auto_scores", {}).get("debt_funding", 0),
             "Seniority": result.get("auto_scores", {}).get("seniority", 0),
             "Tools/Systems": result.get("auto_scores", {}).get("tools_systems", 0),
             "Location Fit": result.get("auto_scores", {}).get("location_fit", 0),
-
             "Auto Technical Score": result.get("technical_score", 0),
             "Manual Technical Score": None,
             "Weighted Technical Score": result.get("technical_score", 0),
-
             "Board Method": "Profile-aware board (95% description / 5% title)",
             "Board Overview Score": result.get("board_avg", 0),
             "Board Avg": result.get("board_avg", 0),
             "Final Score": result.get("final_score", 0),
             "Recommendation": rec,
             "Priority": prio,
-
             "Verified Active": verified_active,
             "Excluded": excluded,
             "Excluded Reason": excluded_reason,
             "Status": status,
-
             "Board Scores": result.get("board_scores", {}),
             "Board Feedback": {},
         }
@@ -378,26 +371,15 @@ consider_count = sum(1 for j in jobs if j.get("Recommendation") == "Consider")
 skip_count = sum(1 for j in jobs if j.get("Recommendation") == "Skip")
 open_count = sum(1 for j in jobs if j.get("Status") == "Open")
 applied_count = sum(1 for j in jobs if j.get("Status") == "Applied")
-interview_process_count = sum(
-    1 for j in jobs if j.get("Status") in ["Interview", "Final Round"]
-)
+interview_process_count = sum(1 for j in jobs if j.get("Status") in ["Interview", "Final Round"])
 follow_up_due = sum(
     1
     for j in jobs
-    if j.get("Follow-up Date")
-    and j.get("Status") not in ["Rejected", "Closed", "Excluded"]
+    if j.get("Follow-up Date") and j.get("Status") not in ["Rejected", "Closed", "Excluded"]
 )
 
-avg_final_score = (
-    round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2)
-    if total_jobs
-    else 0.0
-)
-avg_board = (
-    round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2)
-    if total_jobs
-    else 0.0
-)
+avg_final_score = round(sum(j.get("Final Score", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
+avg_board = round(sum(j.get("Board Avg", 0) for j in jobs) / total_jobs, 2) if total_jobs else 0.0
 
 m1, m2, m3, m4, m5, m6, m7, m8 = st.columns(8)
 m1.metric("Total Jobs", total_jobs)
@@ -424,22 +406,22 @@ else:
     df = pd.DataFrame(jobs)
 
     required_columns = {
-        "Company": "",
-        "Position": "",
-        "Country": "",
-        "Source": "",
-        "Status": "",
-        "Interview Count": 0,
-        "Next Step": "",
-        "Follow-up Date": "",
         "Auto Technical Score": None,
         "Weighted Technical Score": None,
         "Board Overview Score": None,
         "Final Score": None,
         "Recommendation": "",
         "Priority": "",
+        "Status": "",
         "Excluded": False,
         "Excluded Reason": "",
+        "Interview Count": 0,
+        "All Notes and Feedbacks": "",
+        "Next Step": "",
+        "Follow-up Date": "",
+        "Follow-up Message": "",
+        "Country": "",
+        "Source": "",
     }
 
     for col, default in required_columns.items():
@@ -522,27 +504,36 @@ else:
             st.write(f"- Excluded Reason: {job.get('Excluded Reason', '') or 'None'}")
 
             st.write("**Board Scores**")
-            st.json(job.get("Board Scores", {}))
+            board_scores = job.get("Board Scores", {})
+            score_cols = st.columns(len(BOARD_MEMBERS))
+
+            for score_col, member in zip(score_cols, BOARD_MEMBERS):
+                member_data = board_scores.get(member, {}) if isinstance(board_scores, dict) else {}
+
+                if isinstance(member_data, dict):
+                    raw_score = member_data.get("weighted_score", member_data.get("score", 0))
+                else:
+                    raw_score = 0
+
+                try:
+                    display_score = f"{float(raw_score):.0f}"
+                except (TypeError, ValueError):
+                    display_score = "0"
+
+                score_col.metric(member, display_score)
 
             st.markdown("#### Hiring Process Follow-up")
 
             current_status = job.get("Status", "Open") or "Open"
-            status_index = (
-                APP_STATUSES.index(current_status)
-                if current_status in APP_STATUSES
-                else 0
-            )
+            status_index = APP_STATUSES.index(current_status) if current_status in APP_STATUSES else 0
 
             reset_key = f"interview_form_reset_{job.get('id')}"
-
             if reset_key not in st.session_state:
                 st.session_state[reset_key] = 0
-
             reset_token = st.session_state[reset_key]
 
-            with st.form(f"hiring_process_form_{job.get('id')}_{reset_token}"):
+            with st.form(f"process_overview_form_{job.get('id')}"):
                 st.markdown("##### Process Overview")
-
                 p1, p2 = st.columns(2)
 
                 with p1:
@@ -552,15 +543,12 @@ else:
                         index=status_index,
                         key=f"status_{job.get('id')}",
                     )
-
                     st.metric("Number of interviews", len(interviews))
-
                     no_follow_up_date = st.checkbox(
                         "No follow-up date yet",
                         value=False if job.get("Follow-up Date") else True,
                         key=f"no_follow_up_{job.get('id')}",
                     )
-
                     updated_follow_up_date = st.date_input(
                         "Follow-up date",
                         value=safe_date_from_string(job.get("Follow-up Date")),
@@ -574,7 +562,6 @@ else:
                         placeholder="Example: Prepare CFO interview / Send thank-you follow-up",
                         key=f"next_step_{job.get('id')}",
                     )
-
                     updated_follow_up_message = st.text_area(
                         "Follow-up message draft",
                         value=job.get("Follow-up Message", ""),
@@ -582,28 +569,104 @@ else:
                         key=f"follow_up_message_{job.get('id')}",
                     )
 
-                st.markdown("---")
-                st.markdown("##### Interview Log")
+                save_process_overview = st.form_submit_button("Save Process Overview")
 
-                if interviews:
-                    for interview in interviews:
-                        title = f"Interview #{interview.get('number')}"
+            if save_process_overview:
+                follow_up_value = "" if no_follow_up_date else updated_follow_up_date.isoformat()
 
-                        if interview.get("date"):
-                            title += f" — {interview.get('date')}"
+                update_hiring_process(
+                    job_id=job.get("id"),
+                    status=updated_status,
+                    next_step=updated_next_step,
+                    follow_up_date=follow_up_value,
+                    follow_up_message=updated_follow_up_message,
+                    interviews=interviews,
+                )
+                st.session_state.jobs = load_jobs()
+                st.success("Process overview updated.")
+                st.rerun()
 
-                        if interview.get("interviewer"):
-                            title += f" — {interview.get('interviewer')}"
+            st.markdown("---")
+            st.markdown("##### Interview Log")
 
-                        st.write(f"**{title}**")
+            if interviews:
+                for interview in interviews:
+                    interview_number_value = int(interview.get("number", 0) or 0)
+                    title = f"Interview #{interview_number_value}"
+
+                    if interview.get("date"):
+                        title += f" — {interview.get('date')}"
+
+                    if interview.get("interviewer"):
+                        title += f" — {interview.get('interviewer')}"
+
+                    with st.expander(title):
                         st.write(interview.get("notes", "") or "No notes.")
-                else:
-                    st.info("No interviews recorded yet.")
 
-                st.markdown("---")
-                st.markdown("##### Add / Update Interview")
+                        with st.form(f"edit_interview_form_{job.get('id')}_{interview_number_value}_{reset_token}"):
+                            e1, e2 = st.columns(2)
 
-                next_interview_number = len(interviews) + 1
+                            with e1:
+                                edited_interview_date = st.date_input(
+                                    "Interview date",
+                                    value=safe_date_from_string(interview.get("date")),
+                                    key=f"edit_interview_date_{job.get('id')}_{interview_number_value}_{reset_token}",
+                                )
+
+                            with e2:
+                                edited_interviewer = st.text_input(
+                                    "Interviewer",
+                                    value=interview.get("interviewer", ""),
+                                    key=f"edit_interviewer_{job.get('id')}_{interview_number_value}_{reset_token}",
+                                )
+
+                            edited_interview_notes = st.text_area(
+                                "Feedback and Notes",
+                                value=interview.get("notes", ""),
+                                height=160,
+                                key=f"edit_interview_notes_{job.get('id')}_{interview_number_value}_{reset_token}",
+                            )
+
+                            save_interview_edit = st.form_submit_button(
+                                f"Save Interview #{interview_number_value}"
+                            )
+
+                        if save_interview_edit:
+                            updated_interviews = []
+
+                            for existing in interviews:
+                                if int(existing.get("number", 0)) == interview_number_value:
+                                    updated_interviews.append(
+                                        {
+                                            "number": interview_number_value,
+                                            "date": edited_interview_date.isoformat(),
+                                            "interviewer": edited_interviewer.strip(),
+                                            "notes": edited_interview_notes.strip(),
+                                        }
+                                    )
+                                else:
+                                    updated_interviews.append(existing)
+
+                            update_hiring_process(
+                                job_id=job.get("id"),
+                                status=job.get("Status", "Open") or "Open",
+                                next_step=job.get("Next Step", ""),
+                                follow_up_date=job.get("Follow-up Date", ""),
+                                follow_up_message=job.get("Follow-up Message", ""),
+                                interviews=updated_interviews,
+                            )
+                            st.session_state.jobs = load_jobs()
+                            st.session_state[reset_key] += 1
+                            st.success(f"Interview #{interview_number_value} updated.")
+                            st.rerun()
+            else:
+                st.info("No interviews recorded yet.")
+
+            st.markdown("---")
+            st.markdown("##### Add New Interview")
+            next_interview_number = len(interviews) + 1
+
+            with st.form(f"add_interview_form_{job.get('id')}_{reset_token}"):
                 i1, i2, i3 = st.columns(3)
 
                 with i1:
@@ -633,51 +696,44 @@ else:
                 interview_feedback_notes = st.text_area(
                     "Feedback and Notes",
                     height=160,
-                    placeholder=(
-                        "Questions asked, feedback received, concerns, signals, "
-                        "next-step preparation..."
-                    ),
+                    placeholder="Questions asked, feedback received, concerns, signals, next-step preparation...",
                     key=f"new_interview_notes_{job.get('id')}_{reset_token}",
                 )
 
-                save_process = st.form_submit_button("Save Hiring Process")
+                save_new_interview = st.form_submit_button("Save New Interview")
 
-            if save_process:
+            if save_new_interview:
+                if not interviewer.strip() and not interview_feedback_notes.strip():
+                    st.warning("Please add an interviewer or notes before saving a new interview.")
+                    st.stop()
+
                 updated_interviews = list(interviews)
+                new_entry = {
+                    "number": int(interview_number),
+                    "date": interview_date.isoformat(),
+                    "interviewer": interviewer.strip(),
+                    "notes": interview_feedback_notes.strip(),
+                }
 
-                if interviewer.strip() or interview_feedback_notes.strip():
-                    new_entry = {
-                        "number": int(interview_number),
-                        "date": interview_date.isoformat(),
-                        "interviewer": interviewer.strip(),
-                        "notes": interview_feedback_notes.strip(),
-                    }
+                replaced = False
+                for idx, existing in enumerate(updated_interviews):
+                    if int(existing.get("number", 0)) == int(interview_number):
+                        updated_interviews[idx] = new_entry
+                        replaced = True
+                        break
 
-                    replaced = False
-
-                    for idx, existing in enumerate(updated_interviews):
-                        if int(existing.get("number", 0)) == int(interview_number):
-                            updated_interviews[idx] = new_entry
-                            replaced = True
-                            break
-
-                    if not replaced:
-                        updated_interviews.append(new_entry)
-
-                follow_up_value = (
-                    "" if no_follow_up_date else updated_follow_up_date.isoformat()
-                )
+                if not replaced:
+                    updated_interviews.append(new_entry)
 
                 update_hiring_process(
                     job_id=job.get("id"),
-                    status=updated_status,
-                    next_step=updated_next_step,
-                    follow_up_date=follow_up_value,
-                    follow_up_message=updated_follow_up_message,
+                    status=job.get("Status", "Open") or "Open",
+                    next_step=job.get("Next Step", ""),
+                    follow_up_date=job.get("Follow-up Date", ""),
+                    follow_up_message=job.get("Follow-up Message", ""),
                     interviews=updated_interviews,
                 )
-
                 st.session_state.jobs = load_jobs()
                 st.session_state[reset_key] += 1
-                st.success("Hiring process follow-up updated.")
+                st.success("Interview saved.")
                 st.rerun()
