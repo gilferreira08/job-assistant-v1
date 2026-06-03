@@ -9,15 +9,22 @@ def generate_interview_assessment(
     board_avg,
     recommendation,
     interview_notes,
+    api_key=None,
+    model="gpt-5.2",
 ):
-    client = OpenAI()
+    client = OpenAI(api_key=api_key) if api_key else OpenAI()
+
+    instructions = """
+You are an interview preparation advisor for a senior finance professional focused on
+Treasury, Funding, Liquidity, Hedging, Debt Structuring, Project Finance,
+Infrastructure Finance, Treasury Transformation, and Strategic Finance.
+
+Be direct, practical, and interview-oriented.
+Do not write a generic career-coaching answer.
+Use the job context and interview notes to prepare the candidate for the next round.
+"""
 
     prompt = f"""
-You are an interview preparation advisor for a senior finance professional focused on:
-Treasury, Funding, Liquidity, Hedging, Debt Structuring, Project Finance, Infrastructure Finance, Treasury Transformation, and Strategic Finance.
-
-Assess the interview notes below and prepare the candidate for the next step.
-
 Company:
 {company}
 
@@ -40,18 +47,20 @@ Interview Notes / Feedback / Next Step:
 {interview_notes}
 
 Please provide:
-1. Short interview feedback assessment
+1. Short assessment of what the interview notes imply
 2. What likely matters most to the interviewer
 3. Strengths confirmed by the interview
-4. Risks or objections detected
+4. Risks, objections, or weak signals detected
 5. What to improve before the next round
 6. Best talking points for the next round
-7. Suggested follow-up message
-8. Updated recommendation: Continue strongly / Continue carefully / Reconsider
+7. Questions the candidate should ask next
+8. Suggested concise follow-up message
+9. Updated recommendation: Continue strongly / Continue carefully / Reconsider
 """
 
     response = client.responses.create(
-        model="gpt-5.2",
+        model=model,
+        instructions=instructions,
         input=prompt,
     )
 
