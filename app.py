@@ -3,6 +3,7 @@ from datetime import datetime
 import streamlit as st
 import pandas as pd
 
+from interview_agent import generate_interview_assessment
 from knowledge import TARGET_GEOS, BOARD_MEMBERS
 from scoring import (
     weighted_technical_score,
@@ -69,6 +70,9 @@ if uploaded_backup is not None:
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
 
+if "gpt_interview_assessment" not in st.session_state:
+    st.session_state.gpt_interview_assessment = ""
+
 st.subheader("Add Job")
 
 with st.form("job_form"):
@@ -124,6 +128,8 @@ if run_analysis:
     f_score = final_score(blended_tech_score, board_avg)
     auto_excluded = exclusion_detected(position, job_description)
     auto_excl_reason = exclusion_reason(position, job_description)
+
+    st.session_state.gpt_interview_assessment = ""
 
     st.session_state.analysis_result = {
         "company": company,
@@ -220,6 +226,36 @@ if result is not None:
         height=180,
         help="Open text field for interview prep, feedback, objections, and next actions.",
     )
+
+    if st.button("Ask GPT to assess interview notes"):
+        if not interview_notes.strip():
+            st.warning("Please write or paste interview notes first.")
+        else:
+            api_key = None
+            try:
+                api_key = st.secrets.get("OPENAI_API_KEY")
+            except Exception:
+                api_key = None
+
+            if not api_key:
+                st.warning("Missing OPENAI_API_KEY. Add it in Streamlit secrets before using GPT assessment.")
+            else:
+                with st.spinner("GPT is assessing your interview notes..."):
+                    st.session_state.gpt_interview_assessment = generate_interview_assessment(
+                        company=result.get("company", ""),
+                        position=result.get("position", ""),
+                        job_description=result.get("job_description", ""),
+                        final_score=result.get("final_score", 0),
+                        board_avg=result.get("board_avg", 0),
+                        recommendation=result.get("recommendation", ""),
+                        interview_notes=interview_notes,
+                        api_key=api_key,
+                    )
+
+    if st.session_state.gpt_interview_assessment:
+        st.markdown("### GPT Interview Assessment")
+        st.write(st.session_state.gpt_interview_assessment)
+        st.caption("If useful, copy the key points into the Interview Notes field before saving.")
 
     # Duplicate flow
     is_dup = exists_duplicate(result["company"], result["position"], result["country"])
